@@ -106,3 +106,87 @@ char* strcat(char* dest, const char* src) {
         ;
     return dest;
 }
+
+/* Find first occurrence of needle in haystack */
+char* strstr(const char* haystack, const char* needle) {
+    if (!*needle) return (char*)haystack;
+    size_t nlen = strlen(needle);
+    while (*haystack) {
+        if (strncmp(haystack, needle, nlen) == 0)
+            return (char*)haystack;
+        haystack++;
+    }
+    return NULL;
+}
+
+/* Find first occurrence of character c in string s */
+char* strchr(const char* s, int c) {
+    while (*s) {
+        if (*s == (char)c) return (char*)s;
+        s++;
+    }
+    return (c == 0) ? (char*)s : NULL;
+}
+
+/* Find last occurrence of character c in string s */
+char* strrchr(const char* s, int c) {
+    const char* last = NULL;
+    while (*s) {
+        if (*s == (char)c) last = s;
+        s++;
+    }
+    return (c == 0) ? (char*)s : (char*)last;
+}
+
+/* Find first char in s that's in accept */
+char* strpbrk(const char* s, const char* accept) {
+    while (*s) {
+        for (const char* a = accept; *a; a++)
+            if (*s == *a) return (char*)s;
+        s++;
+    }
+    return NULL;
+}
+
+/* Length of prefix of s consisting of chars in accept */
+size_t strspn(const char* s, const char* accept) {
+    size_t count = 0;
+    while (*s) {
+        const char* a = accept;
+        while (*a && *a != *s) a++;
+        if (!*a) break;
+        count++; s++;
+    }
+    return count;
+}
+
+/* Length of prefix of s consisting of chars NOT in reject */
+size_t strcspn(const char* s, const char* reject) {
+    size_t count = 0;
+    while (*s) {
+        for (const char* r = reject; *r; r++)
+            if (*s == *r) return count;
+        count++; s++;
+    }
+    return count;
+}
+
+/* Return error string for errno value */
+char* strerror(int errnum) {
+    (void)errnum;
+    return "error";
+}
+
+/* Find first occurrence of byte c in first n bytes of s */
+void* memchr(const void* s, int c, size_t n) {
+    const unsigned char* p = (const unsigned char*)s;
+    for (size_t i = 0; i < n; i++) {
+        if (p[i] == (unsigned char)c) return (void*)(p + i);
+    }
+    return NULL;
+}
+
+/* strcoll — locale-aware string comparison. We just use strcmp. */
+int strcoll(const char* a, const char* b) {
+    return strcmp(a, b);
+}

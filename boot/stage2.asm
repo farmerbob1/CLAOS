@@ -30,7 +30,7 @@ stage2_start:
     ; Load in chunks of 64 sectors (32KB) to different segments
     mov word [cur_seg], LOAD_SEG_START
     mov dword [cur_lba], 10         ; Kernel starts at LBA 10
-    mov word [chunks_left], 16      ; 16 chunks × 32KB = 512KB max
+    mov word [chunks_left], 20      ; 20 chunks × 32KB = 640KB max
 
 .load_loop:
     cmp word [chunks_left], 0
@@ -58,8 +58,8 @@ stage2_start:
     add dword [cur_lba], 64
     dec word [chunks_left]
 
-    ; Don't load past 0x8000:0 = 0x80000 (to avoid overwriting stuff)
-    cmp word [cur_seg], 0x8000
+    ; Don't load past 0xA000:0 = 0xA0000 (conventional memory limit)
+    cmp word [cur_seg], 0xA000
     jae .load_done
 
     mov al, '.'
@@ -204,7 +204,7 @@ pm_entry:
     ; copying extra zeros is harmless and avoids variable address issues.
     mov esi, LOAD_BASE              ; Source: where we loaded in real mode
     mov edi, KERNEL_PHYS            ; Destination: 1MB
-    mov ecx, 0x70000                ; Copy 448KB (safe amount below 0x80000)
+    mov ecx, 0x90000                ; Copy 576KB (enough for kernel + BearSSL + Lua)
     rep movsb                       ; Copy!
 
     ; Jump to the kernel at 1MB

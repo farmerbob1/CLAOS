@@ -35,6 +35,7 @@
 #include "claude.h"
 #include "ata.h"
 #include "chaosfs.h"
+#include "claos_lib.h"
 #include "shell.h"
 
 /* IRQ handler functions defined in driver files */
@@ -137,7 +138,7 @@ static void print_banner(void) {
     vga_print("   ####  ######  ##  ##   ####   ####\n");
 
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("\n  Claude Assisted Operating System v0.6\n");
+    vga_print("\n  Claude Assisted Operating System v0.7\n");
 
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  ========================================\n");
@@ -297,7 +298,11 @@ void kernel_main(void) {
         boot_msg("ATA disk", "NOT FOUND (no storage)");
     }
 
-    /* Step 16: Claude integration */
+    /* Step 16: Lua scripting */
+    lua_subsystem_init();
+    boot_msg("Lua 5.5 awakened", "the scripting layer stirs");
+
+    /* Step 17: Claude integration */
     claude_init();
     if (claude_is_configured()) {
         boot_msg("Claude AI", "CONNECTED");

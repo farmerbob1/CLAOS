@@ -26,6 +26,7 @@
 #include "dns.h"
 #include "net.h"
 #include "chaosfs.h"
+#include "claos_lib.h"
 
 /* Shell input buffer */
 #define SHELL_BUF_SIZE 1024
@@ -62,6 +63,12 @@ static void cmd_help(void) {
     help_cmd("mkdir <path>", "Create directory");
     help_cmd("del <file>", "Delete file");
     help_cmd("disk", "Show disk usage");
+
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("\n  Lua Scripting\n");
+    help_cmd("lua", "Open Lua REPL");
+    help_cmd("lua <file>", "Run a Lua script");
+    help_cmd("luarun <code>", "Execute inline Lua");
 
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("\n  System\n");
@@ -510,7 +517,7 @@ static void cmd_reboot(void) {
 
 void shell_run(void) {
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.6 ready.\n");
+    vga_print("  CLAOS v0.7 ready.\n");
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  Type 'help' for commands, or just talk to Claude.\n\n");
 
@@ -564,6 +571,12 @@ void shell_run(void) {
             cmd_del(line + 3);  /* rm alias for del */
         } else if (strcmp(line, "disk") == 0) {
             cmd_disk();
+        } else if (strcmp(line, "lua") == 0) {
+            lua_repl();
+        } else if (strncmp(line, "lua ", 4) == 0) {
+            lua_run_file(line + 4);
+        } else if (strncmp(line, "luarun ", 7) == 0) {
+            lua_run_string(line + 7);
         } else if (strcmp(line, "tls") == 0) {
             cmd_tls();
         } else if (strcmp(line, "config") == 0) {

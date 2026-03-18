@@ -60,13 +60,21 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - AI-first shell: unrecognized commands automatically sent to Claude
 - `claude <msg>` to talk to Claude, or just type anything
 
-### Phase 6 — ChaosFS Custom Filesystem (Current)
+### Phase 6 — ChaosFS Custom Filesystem
 - **ChaosFS** — custom from-scratch filesystem with long filenames (108 chars)
 - ATA/IDE PIO driver for disk I/O
 - Contiguous block allocation, superblock + file table design
 - 64MB disk image with persistent storage across reboots
 - Shell commands: `dir`, `read`, `write`, `mkdir`, `del`, `disk`
 - Build system preserves filesystem data across kernel rebuilds
+
+### Phase 7 — Embedded Lua 5.5 (Current)
+- **Lua 5.5** ported to freestanding i686 (32 source files compiled into kernel)
+- Full compatibility shim: malloc/realloc/free, math, stdio, time, setjmp/longjmp
+- **`claos.*` API bindings** — talk to Claude, read/write files, system info from Lua
+- Interactive Lua REPL (`lua` command) and script execution (`lua <file>`)
+- Inline Lua execution (`luarun <code>`)
+- Pre-installed scripts on ChaosFS: `/scripts/hello.lua`, `/scripts/chat.lua`
 
 ## Shell Commands
 
@@ -80,6 +88,9 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | `mkdir <path>` | Create directory |
 | `del <file>` | Delete file |
 | `disk` | Show ChaosFS disk usage |
+| `lua` | Open Lua REPL |
+| `lua <file>` | Run a Lua script |
+| `luarun <code>` | Execute inline Lua |
 | `sysinfo` | System information |
 | `tasks` | List running tasks |
 | `net` | Network configuration |
@@ -102,7 +113,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | 4 | **Done** | HTTPS Client & Claude Integration |
 | 5 | **Done** | ClaudeShell |
 | 6 | **Done** | ChaosFS Custom Filesystem |
-| 7 | Planned | Embedded Lua Scripting |
+| 7 | **Done** | Embedded Lua 5.5 Scripting |
 | 8 | Planned | GUI Desktop |
 
 ---

@@ -22,8 +22,9 @@ QEMU    = /c/msys64/mingw64/bin/qemu-system-i386
 # ─── Compiler Flags ──────────────────────────────────────────
 CFLAGS  = -ffreestanding -nostdlib -fno-builtin -fno-pie \
           -Wall -Wextra -Wno-unused-parameter \
-          -I include -I kernel -I drivers -I net -I claude -I shell -I fs \
+          -I include -I kernel -I drivers -I net -I claude -I shell -I fs -I lua \
           -I lib/bearssl/inc -I lib/bearssl/src \
+          -I lib/lua/src \
           -O2 -g
 
 # BearSSL gets compiled with relaxed warnings (it's third-party code)
@@ -67,26 +68,39 @@ C_SOURCES = kernel/main.c \
             claude/json.c \
             claude/panic_handler.c \
             shell/shell.c \
-            lib/bearssl/bearssl_shim.c
+            lua/claos_lib.c \
+            lib/bearssl/bearssl_shim.c \
+            lib/lua/lua_shim.c
 
 # BearSSL source files (found automatically, excluding sysrng.c which we replace)
 BEARSSL_SOURCES = $(filter-out lib/bearssl/src/rand/sysrng.c, \
                     $(shell find lib/bearssl/src -name '*.c'))
+
+# Lua 5.5 source files (exclude lua.c and luac.c — standalone tools we don't need)
+LUA_SOURCES = $(filter-out lib/lua/src/lua.c lib/lua/src/luac.c, \
+                $(shell find lib/lua/src -name '*.c'))
+
+# Lua gets compiled with relaxed warnings and our shim defines
+LUA_CFLAGS = -ffreestanding -nostdlib -fno-builtin -fno-pie \
+             -isystem include -I lib/lua/src -I kernel -I drivers -I fs \
+             -DLUA_USE_C89 -w -O2
 
 # Assembly source files (ELF object files for linking with C)
 ASM_SOURCES = kernel/entry.asm \
               kernel/isr.asm \
               kernel/irq.asm \
               kernel/gdt_flush.asm \
-              kernel/scheduler_asm.asm
+              kernel/scheduler_asm.asm \
+              kernel/setjmp.asm
 
 # ─── Object Files ────────────────────────────────────────────
 C_OBJECTS       = $(C_SOURCES:.c=.o)
 BEARSSL_OBJECTS = $(BEARSSL_SOURCES:.c=.o)
+LUA_OBJECTS     = $(LUA_SOURCES:.c=.o)
 ASM_OBJECTS     = $(ASM_SOURCES:.asm=.o)
 # entry.o MUST come first so _entry is at the start of the binary
 OBJECTS = kernel/entry.o $(filter-out kernel/entry.o,$(ASM_OBJECTS)) \
-          $(C_OBJECTS) $(BEARSSL_OBJECTS)
+          $(C_OBJECTS) $(BEARSSL_OBJECTS) $(LUA_OBJECTS)
 
 # ─── Build Targets ───────────────────────────────────────────
 
@@ -109,6 +123,10 @@ $(C_OBJECTS): %.o: %.c
 # Compile BearSSL source files (with relaxed warnings)
 $(BEARSSL_OBJECTS): %.o: %.c
 	$(CC) $(BEARSSL_CFLAGS) -c $< -o $@
+
+# Compile Lua source files
+$(LUA_OBJECTS): %.o: %.c
+	$(CC) $(LUA_CFLAGS) -c $< -o $@
 
 # Assemble NASM source files to ELF object files
 %.o: %.asm
@@ -134,6 +152,8 @@ claos.img: boot/stage1.bin boot/stage2.bin kernel.bin
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /welcome.txt "Welcome to CLAOS! Type help for commands, or just talk to Claude."; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /scripts; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /logs; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /scripts/hello.lua "print('Hello from Lua on CLAOS!')\nprint('Uptime: ' .. claos.uptime() .. 's')"; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /scripts/chat.lua "print('CLAOS Lua Chat — type quit to exit')\nwhile true do\n  io.write('You: ')\n  local msg = claos.input('You: ')\n  if msg == 'quit' then break end\n  local resp = claos.ask(msg)\n  if resp then print('Claude: ' .. resp) end\nend"; \
 	fi
 	@# Write bootloader + kernel to the start of the disk (preserves ChaosFS at sector 2048+)
 	dd if=boot/stage1.bin of=claos.img bs=512 conv=notrunc 2>/dev/null
@@ -175,6 +195,7 @@ clean:
 	rm -f kernel.bin kernel.elf
 	rm -f $(C_OBJECTS) $(ASM_OBJECTS)
 	find lib/bearssl/src -name '*.o' -delete 2>/dev/null || true
+	find lib/lua/src -name '*.o' -delete 2>/dev/null || true
 	@echo "=== Cleaned (claos.img preserved) ==="
 
 # Full clean including disk image
