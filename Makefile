@@ -22,7 +22,7 @@ QEMU    = /c/msys64/mingw64/bin/qemu-system-i386
 # ─── Compiler Flags ──────────────────────────────────────────
 CFLAGS  = -ffreestanding -nostdlib -fno-builtin -fno-pie \
           -Wall -Wextra -Wno-unused-parameter \
-          -I include -I kernel -I drivers -I net -I claude -I shell \
+          -I include -I kernel -I drivers -I net -I claude -I shell -I fs \
           -I lib/bearssl/inc -I lib/bearssl/src \
           -O2 -g
 
@@ -52,6 +52,8 @@ C_SOURCES = kernel/main.c \
             drivers/timer.c \
             drivers/pci.c \
             drivers/e1000.c \
+            drivers/ata.c \
+            fs/chaosfs.c \
             net/ethernet.c \
             net/arp.c \
             net/ipv4.c \
@@ -120,13 +122,31 @@ kernel.bin: $(OBJECTS)
 
 # Build the final disk image
 # Layout: [Stage1 512B] [Stage2 + Kernel padded to fill sectors]
+# Build/update the disk image.
+# If claos.img doesn't exist, create it fresh with ChaosFS formatted.
+# If it already exists, only overwrite the boot/kernel sectors — ChaosFS data is preserved.
 claos.img: boot/stage1.bin boot/stage2.bin kernel.bin
 	@echo "=== Building CLAOS disk image ==="
-	cat boot/stage1.bin boot/stage2.bin kernel.bin > claos.img
-	@# Pad to at least 2MB for larger kernel with BearSSL
-	truncate -s 2M claos.img || dd if=/dev/null of=claos.img bs=1 count=0 seek=2097152
-	@echo "=== claos.img built successfully ==="
+	@if [ ! -f claos.img ]; then \
+		echo "  Creating new 64MB disk image..."; \
+		dd if=/dev/null of=claos.img bs=1 count=0 seek=67108864 2>/dev/null; \
+		/c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --format; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /welcome.txt "Welcome to CLAOS! Type help for commands, or just talk to Claude."; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /scripts; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /logs; \
+	fi
+	@# Write bootloader + kernel to the start of the disk (preserves ChaosFS at sector 2048+)
+	dd if=boot/stage1.bin of=claos.img bs=512 conv=notrunc 2>/dev/null
+	dd if=boot/stage2.bin of=claos.img bs=512 seek=1 conv=notrunc 2>/dev/null
+	dd if=kernel.bin of=claos.img bs=512 seek=10 conv=notrunc 2>/dev/null
+	@echo "=== claos.img updated (ChaosFS preserved) ==="
 	@ls -la claos.img
+
+# Force recreate the disk image from scratch (destroys ChaosFS data)
+.PHONY: newdisk
+newdisk:
+	rm -f claos.img
+	$(MAKE) claos.img
 
 # Run in QEMU with e1000 NIC
 run: claos.img
@@ -149,10 +169,15 @@ debug: claos.img
 		-d int,cpu_reset -no-shutdown
 
 # Clean build artifacts
+# Clean build artifacts but KEEP claos.img (preserves ChaosFS data)
 clean:
 	rm -f boot/stage1.bin boot/stage2.bin
 	rm -f kernel.bin kernel.elf
-	rm -f claos.img
 	rm -f $(C_OBJECTS) $(ASM_OBJECTS)
 	find lib/bearssl/src -name '*.o' -delete 2>/dev/null || true
-	@echo "=== Cleaned ==="
+	@echo "=== Cleaned (claos.img preserved) ==="
+
+# Full clean including disk image
+fullclean: clean
+	rm -f claos.img
+	@echo "=== Full clean (disk image deleted) ==="

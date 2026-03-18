@@ -25,71 +25,61 @@
 #include "tls_client.h"
 #include "dns.h"
 #include "net.h"
+#include "chaosfs.h"
 
 /* Shell input buffer */
 #define SHELL_BUF_SIZE 1024
 
 /* ─── Command Handlers ─── */
 
+/* Helper to print a command entry in the help list */
+static void help_cmd(const char* cmd, const char* desc) {
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  ");
+    vga_print(cmd);
+    /* Pad to column 18 */
+    int len = strlen(cmd) + 2;
+    while (len < 18) { vga_putchar(' '); len++; }
+    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+    vga_print(desc);
+    vga_print("\n");
+}
+
 static void cmd_help(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
-    vga_print("\n");
-    vga_print("  ── ClaudeShell Commands ──\n\n");
+    vga_print("\n  ── ClaudeShell Commands ──\n");
 
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  claude <msg> ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Ask Claude a question\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("\n  Claude\n");
+    help_cmd("claude <msg>", "Ask Claude a question");
+    help_cmd("config", "Configure API key & model");
 
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  config       ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Configure API key & model\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("\n  Files (ChaosFS)\n");
+    help_cmd("dir [path]", "List files");
+    help_cmd("read <file>", "Display file contents");
+    help_cmd("write <f> <d>", "Write data to file");
+    help_cmd("mkdir <path>", "Create directory");
+    help_cmd("del <file>", "Delete file");
+    help_cmd("disk", "Show disk usage");
 
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  sysinfo      ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  System information\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("\n  System\n");
+    help_cmd("sysinfo", "System information");
+    help_cmd("tasks", "List running tasks");
+    help_cmd("uptime", "Show system uptime");
+    help_cmd("clear", "Clear the screen");
 
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  tasks        ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  List running tasks\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("\n  Network\n");
+    help_cmd("net", "Network configuration");
+    help_cmd("dns <host>", "Resolve a hostname");
+    help_cmd("tls", "Test TLS handshake");
 
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  net          ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Network configuration\n");
-
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  dns <host>   ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Resolve a hostname\n");
-
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  tls          ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Test TLS handshake\n");
-
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  uptime       ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Show system uptime\n");
-
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  clear        ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Clear the screen\n");
-
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  panic        ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Trigger a kernel panic\n");
-
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  reboot       ");
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  Reboot the system\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("\n  Danger Zone\n");
+    help_cmd("panic", "Trigger a kernel panic");
+    help_cmd("reboot", "Reboot the system");
 
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("\n  Any other input is sent to Claude as a prompt.\n");
@@ -310,6 +300,169 @@ static void cmd_claude(const char* prompt) {
     vga_set_color(VGA_WHITE, VGA_BLACK);
 }
 
+/* ─── Filesystem Commands ─── */
+
+/* Callback for ls — prints each file entry */
+static void ls_print_entry(const struct chaosfs_entry* entry, void* ctx) {
+    (void)ctx;
+    vga_print("  ");
+    if (entry->flags & CHAOSFS_FLAG_DIR) {
+        vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+        vga_print("[DIR]  ");
+    } else {
+        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        vga_print_dec(entry->size);
+        int digits = 0;
+        uint32_t tmp = entry->size;
+        do { digits++; tmp /= 10; } while (tmp > 0);
+        for (int i = digits; i < 6; i++) vga_putchar(' ');
+        vga_print(" ");
+    }
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print(entry->filename);
+    vga_print("\n");
+}
+
+static void cmd_ls(const char* path) {
+    vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_print("  ── Files ──\n");
+    chaosfs_list(path, ls_print_entry, NULL);
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+}
+
+static void cmd_read(const char* path) {
+    static char file_buf[4096];
+    int len = chaosfs_read(path, file_buf, sizeof(file_buf) - 1);
+    if (len < 0) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  File not found: ");
+        vga_print(path);
+        vga_print("\n");
+    } else {
+        file_buf[len] = '\0';
+        vga_set_color(VGA_WHITE, VGA_BLACK);
+        vga_print(file_buf);
+        if (len > 0 && file_buf[len - 1] != '\n')
+            vga_print("\n");
+    }
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+}
+
+static void cmd_write(const char* args) {
+    /* Parse: first word is path, rest is content */
+    const char* p = args;
+    while (*p && *p != ' ') p++;
+    int path_len = p - args;
+    if (path_len == 0 || *p == '\0') {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  Usage: write <path> <content>\n");
+        vga_set_color(VGA_WHITE, VGA_BLACK);
+        return;
+    }
+
+    char path[CHAOSFS_MAX_FILENAME];
+    if (path_len >= CHAOSFS_MAX_FILENAME) path_len = CHAOSFS_MAX_FILENAME - 1;
+    memcpy(path, args, path_len);
+    path[path_len] = '\0';
+
+    const char* content = p + 1;  /* Skip the space */
+    int content_len = strlen(content);
+
+    if (chaosfs_write(path, content, content_len) == 0) {
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        vga_print("  Written ");
+        vga_print_dec(content_len);
+        vga_print(" bytes to ");
+        vga_print(path);
+        vga_print("\n");
+    } else {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  Failed to write to ");
+        vga_print(path);
+        vga_print("\n");
+    }
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+}
+
+static void cmd_mkdir(const char* path) {
+    if (chaosfs_mkdir(path) == 0) {
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        vga_print("  Created directory: ");
+        vga_print(path);
+        vga_print("\n");
+    } else {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  Failed to create directory\n");
+    }
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+}
+
+static void cmd_del(const char* path) {
+    if (chaosfs_delete(path) == 0) {
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        vga_print("  Deleted: ");
+        vga_print(path);
+        vga_print("\n");
+    } else {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  File not found: ");
+        vga_print(path);
+        vga_print("\n");
+    }
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+}
+
+static void cmd_disk(void) {
+    uint32_t total_blocks, used_blocks, file_count, block_size;
+    chaosfs_disk_stats(&total_blocks, &used_blocks, &file_count, &block_size);
+
+    vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_print("  ── ChaosFS Disk ──\n");
+
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_print("  Filesystem:  ");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("ChaosFS v1\n");
+
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_print("  Block size:  ");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print_dec(block_size);
+    vga_print(" bytes\n");
+
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_print("  Total:       ");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print_dec(total_blocks * (block_size / 1024));
+    vga_print("KB (");
+    vga_print_dec(total_blocks);
+    vga_print(" blocks)\n");
+
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_print("  Used:        ");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print_dec(used_blocks * (block_size / 1024));
+    vga_print("KB (");
+    vga_print_dec(used_blocks);
+    vga_print(" blocks)\n");
+
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_print("  Free:        ");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_print_dec((total_blocks - used_blocks) * (block_size / 1024));
+    vga_print("KB (");
+    vga_print_dec(total_blocks - used_blocks);
+    vga_print(" blocks)\n");
+
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_print("  Files:       ");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print_dec(file_count);
+    vga_print("\n");
+
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+}
+
 /* Send an unrecognized command to Claude with context */
 static void cmd_unknown(const char* input) {
     /* Build a contextualized prompt for Claude */
@@ -357,7 +510,7 @@ static void cmd_reboot(void) {
 
 void shell_run(void) {
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.5 ready.\n");
+    vga_print("  CLAOS v0.6 ready.\n");
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  Type 'help' for commands, or just talk to Claude.\n\n");
 
@@ -391,6 +544,26 @@ void shell_run(void) {
             cmd_net();
         } else if (strncmp(line, "dns ", 4) == 0) {
             cmd_dns(line + 4);
+        } else if (strcmp(line, "dir") == 0 || strncmp(line, "dir ", 4) == 0) {
+            const char* path = strlen(line) > 4 ? line + 4 : "/";
+            cmd_ls(path);
+        } else if (strcmp(line, "ls") == 0 || strncmp(line, "ls ", 3) == 0) {
+            const char* path = strlen(line) > 3 ? line + 3 : "/";
+            cmd_ls(path);  /* ls alias for dir */
+        } else if (strncmp(line, "read ", 5) == 0) {
+            cmd_read(line + 5);
+        } else if (strncmp(line, "cat ", 4) == 0) {
+            cmd_read(line + 4);  /* cat alias for read */
+        } else if (strncmp(line, "write ", 6) == 0) {
+            cmd_write(line + 6);
+        } else if (strncmp(line, "mkdir ", 6) == 0) {
+            cmd_mkdir(line + 6);
+        } else if (strncmp(line, "del ", 4) == 0) {
+            cmd_del(line + 4);
+        } else if (strncmp(line, "rm ", 3) == 0) {
+            cmd_del(line + 3);  /* rm alias for del */
+        } else if (strcmp(line, "disk") == 0) {
+            cmd_disk();
         } else if (strcmp(line, "tls") == 0) {
             cmd_tls();
         } else if (strcmp(line, "config") == 0) {

@@ -21,3 +21,5 @@ dump.pcap
 serial_out.txt
 serial_log.txt
 claude/config.h
+*.log
+Python/

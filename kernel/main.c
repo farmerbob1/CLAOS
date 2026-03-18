@@ -33,6 +33,8 @@
 #include "net.h"
 #include "entropy.h"
 #include "claude.h"
+#include "ata.h"
+#include "chaosfs.h"
 #include "shell.h"
 
 /* IRQ handler functions defined in driver files */
@@ -135,7 +137,7 @@ static void print_banner(void) {
     vga_print("   ####  ######  ##  ##   ####   ####\n");
 
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("\n  Claude Assisted Operating System v0.5\n");
+    vga_print("\n  Claude Assisted Operating System v0.6\n");
 
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  ========================================\n");
@@ -281,7 +283,21 @@ void kernel_main(void) {
         boot_msg("e1000 NIC", "NOT FOUND (no network)");
     }
 
-    /* Step 14: Claude integration */
+    /* Step 14: ATA disk driver */
+    if (ata_init()) {
+        boot_msg("ATA disk", "OK");
+
+        /* Step 15: ChaosFS */
+        if (chaosfs_init()) {
+            boot_msg("Mounting consciousness storage", "done");
+        } else {
+            boot_msg("ChaosFS", "NOT FOUND (use mkchaosfs.py to format)");
+        }
+    } else {
+        boot_msg("ATA disk", "NOT FOUND (no storage)");
+    }
+
+    /* Step 16: Claude integration */
     claude_init();
     if (claude_is_configured()) {
         boot_msg("Claude AI", "CONNECTED");
