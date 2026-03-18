@@ -19,35 +19,31 @@ This is a meme project and educational toy — not a production OS. Prioritize "
 ┌──────────────────────────────────────────────────┐
 │                  CLAOS Stack                      │
 ├──────────────────────────────────────────────────┤
-│  Layer 8: GUI (VESA framebuffer desktop)          │
+│  GUI Desktop (VESA framebuffer, window manager)   │  Phase 8
 ├──────────────────────────────────────────────────┤
-│  Layer 7: Lua 5.4 Scripting Environment           │
-│           ClaudeScript API bindings               │
+│  Lua 5.4 Scripting (ClaudeScript API bindings)    │  Phase 7
 ├──────────────────────────────────────────────────┤
-│  Layer 6: ClaudeShell (interactive AI shell)       │
+│  ChaosFS (custom filesystem, ATA/IDE driver)      │  Phase 6
 ├──────────────────────────────────────────────────┤
-│  Layer 5: Claude Protocol Layer                   │
-│           JSON request/response over HTTPS        │
+│  ClaudeShell (AI-first interactive shell)          │  Phase 5
 ├──────────────────────────────────────────────────┤
-│  Layer 4: HTTPS Client                            │
-│           HTTP/1.1 + TLS 1.2 (via BearSSL port)  │
+│  Claude Protocol + HTTPS Client                   │  Phase 4
+│  (JSON/Messages API over HTTP/1.1 + TLS 1.2)     │
 ├──────────────────────────────────────────────────┤
-│  Layer 3: Network Stack                           │
-│           e1000 NIC → Ethernet → ARP → IPv4 →    │
-│           DNS (UDP) → TCP                         │
+│  TLS 1.2 (BearSSL port, entropy pool)             │  Phase 3.5
 ├──────────────────────────────────────────────────┤
-│  Layer 2: Drivers + Filesystem                    │
-│           VGA, PS/2 keyboard, PIT timer,          │
-│           e1000 NIC, ATA/IDE, ChaosFS             │
+│  Network Stack                                    │  Phase 3
+│  (e1000 NIC → Ethernet → ARP → IPv4 →            │
+│   DNS/UDP → TCP)                                  │
 ├──────────────────────────────────────────────────┤
-│  Layer 1: Kernel                                  │
-│           GDT, IDT, ISRs, physical/virtual        │
-│           memory manager, basic scheduler,        │
-│           panic handler → Claude                  │
+│  Memory Management & Scheduler                    │  Phase 2
+│  (PMM, paging, heap, preemptive scheduler)        │
 ├──────────────────────────────────────────────────┤
-│  Layer 0: Bootloader                              │
-│           Stage 1 (MBR) → Stage 2 → kernel       │
-│           Real mode → Protected mode (32-bit)     │
+│  Kernel + Drivers                                 │  Phase 1
+│  (GDT, IDT, ISRs, VGA, PS/2 keyboard, PIT timer) │
+├──────────────────────────────────────────────────┤
+│  Bootloader                                       │  Phase 1
+│  (Stage 1 MBR → Stage 2 → Protected Mode)        │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -110,7 +106,7 @@ CLAOS (bare metal / VM)
 
 ### PHASE 3.5: TLS via BearSSL Port ✅ COMPLETED
 
-1. BearSSL source integration
+1. BearSSL source integration (294 files compiled freestanding)
 2. CLAOS compatibility shim
 3. BearSSL I/O callbacks wired to TCP stack
 4. Certificate trust store (root CAs for api.anthropic.com)
@@ -121,29 +117,20 @@ CLAOS (bare metal / VM)
 
 ### PHASE 4: HTTPS Client & Claude Integration ✅ COMPLETED
 
-1. HTTPS client (HTTP/1.1 over TLS)
+1. HTTPS client (HTTP/1.1 over TLS, chunked encoding)
 2. Claude Protocol Layer (Anthropic Messages API)
 3. Minimal JSON parser
-4. API key storage (compile-time config.h)
+4. Runtime API key configuration (interactive `config` command)
 5. Panic-to-Claude handler
 
 ---
 
-### PHASE 5: Interactive Shell ✅ COMPLETED (minus Lua — now Phase 7)
+### PHASE 5: ClaudeShell ✅ COMPLETED
 
 1. **ClaudeShell** (`shell/shell.c`)
    - Prompt: `claos> `
-   - Built-in commands:
-     - `claude <message>` — send a prompt to Claude and display the response
-     - `sysinfo` — show memory usage, uptime, task count, network status
-     - `clear` — clear screen
-     - `panic` — deliberately trigger a kernel panic (demo panic→Claude flow)
-     - `reboot` — triple-fault reboot
-     - `help` — list commands
-     - `tasks` — show running tasks
-     - `net` — show network configuration
-     - `ping <ip>` — send ICMP echo request (nice to have)
-   - Unrecognized commands sent to Claude with context
+   - Built-in commands: `claude`, `config`, `sysinfo`, `tasks`, `net`, `dns`, `tls`, `uptime`, `clear`, `panic`, `reboot`, `help`
+   - Unrecognized commands automatically sent to Claude with context
 
 ---
 
@@ -253,7 +240,7 @@ Add new shell commands:
 
 **Build process update:**
 - Disk image is now larger (e.g., 16MB) to fit the ChaosFS data region
-- ChaosFS partition starts at a fixed offset (sector 2048 = 1MB)
+- ChaosFS region starts at a fixed offset (sector 2048 = 1MB)
 - A Python tool (`tools/mkchaosfs.py`) formats the ChaosFS region and pre-populates files
 
 ```bash
@@ -274,13 +261,12 @@ python tools/mkchaosfs.py claos.img --offset 2048 --add scripts/hello.lua "print
 1. **Port Lua 5.4** (`lib/lua/`)
    - Lua is written in pure ANSI C — designed to be portable
    - Same approach as BearSSL: compile freestanding, link into kernel
-   - Lua's core is ~15,000 lines of C (not 30K — the full distribution includes tools and tests we don't need)
-   - Key files needed: lapi.c, lcode.c, ldebug.c, ldo.c, lfunc.c, lgc.c, llex.c, lmem.c, lobject.c, lopcodes.c, lparser.c, lstate.c, lstring.c, ltable.c, ltm.c, lundump.c, lvm.c, lzio.c, lauxlib.c, lbaselib.c, lstrlib.c, ltablib.c, lmathlib.c
+   - Lua's core is ~15,000 lines of C
    - **Skip:** liolib.c (uses stdio — replace with our VFS), loslib.c (uses OS calls), loadlib.c (dynamic loading — not needed)
    - **Compatibility shim** (`lib/lua/lua_shim.c`):
-     - Map Lua's file operations to our VFS: `vfs_open`, `vfs_read`, `vfs_write`
+     - Map Lua's file operations to our VFS
      - Provide `clock()` using PIT timer
-     - Provide `realloc` using `kmalloc`/`kfree` (Lua uses a single allocator function)
+     - Provide `realloc` using `kmalloc`/`kfree`
 
 2. **CLAOS API bindings** (`lua/claos_lib.c`)
    - Register a `claos` Lua library with these functions:
@@ -290,9 +276,9 @@ python tools/mkchaosfs.py claos.img --offset 2048 --add scripts/hello.lua "print
 
      -- System info
      claos.print("Hello from Lua!")
-     uptime = claos.uptime()          -- seconds since boot
-     free_mem = claos.mem_free()      -- bytes of free RAM
-     total_mem = claos.mem_total()    -- bytes of total RAM
+     uptime = claos.uptime()
+     free_mem = claos.mem_free()
+     total_mem = claos.mem_total()
 
      -- Filesystem
      claos.write("/logs/output.txt", "some data")
@@ -300,85 +286,70 @@ python tools/mkchaosfs.py claos.img --offset 2048 --add scripts/hello.lua "print
      files = claos.ls("/scripts")
 
      -- System control
-     claos.sleep(1000)                -- sleep in ms
-     claos.set_color(fg, bg)          -- set VGA colors
-     claos.clear()                    -- clear screen
+     claos.sleep(1000)
+     claos.set_color(fg, bg)
+     claos.clear()
      ```
 
 3. **Shell integration**
    - `lua` — open interactive Lua REPL
    - `lua <file.lua>` — execute a Lua script from the filesystem
    - `luarun <code>` — execute inline Lua code (one-liners)
-   - Example workflow:
-     ```
-     claos> write /scripts/hello.lua print(claos.ask("Tell me a joke"))
-     claos> lua /scripts/hello.lua
-     [CLAOS → Claude] Sending...
-     [Claude] Why do programmers prefer dark mode? Because light attracts bugs!
-     ```
 
-4. **Pre-installed scripts** (put on ChaosFS partition during build)
+4. **Pre-installed scripts** (put on ChaosFS during build)
    - `/scripts/welcome.lua` — prints system info and a Claude greeting
    - `/scripts/sysmon.lua` — loops and displays memory/task info
-   - `/scripts/chat.lua` — interactive multi-turn chat with Claude (maintains conversation context in Lua table)
+   - `/scripts/chat.lua` — interactive multi-turn chat with Claude
    - `/scripts/crash_test.lua` — deliberately does bad things to test the panic handler
 
-**Milestone:** Boot CLAOS, type `lua /scripts/chat.lua`, have a multi-turn conversation with Claude powered by a Lua script running on a from-scratch OS with a from-scratch filesystem. Peak chaos.
+**Milestone:** Boot CLAOS, type `lua /scripts/chat.lua`, have a multi-turn conversation with Claude powered by a Lua script running on a from-scratch OS with a from-scratch filesystem.
 
 ---
 
 ### PHASE 8: GUI
 
-Reference the **CLAOS GUI v2 mockup** (human-friendly design) for the target aesthetic. The GUI has two available design references:
+Reference the **CLAOS GUI v2 mockup** (human-friendly design) for the target aesthetic.
 
-- **v1 (dark/hacker):** Deep navy background, monospace everything, terminal-native. For the hacker aesthetic.
-- **v2 (light/friendly):** Warm cream background, clean cards, chat-bubble interface, icon sidebar. More approachable for daily use.
+- **v1 (dark/hacker):** Deep navy background, monospace everything, terminal-native.
+- **v2 (light/friendly):** Warm cream background, clean cards, chat-bubble interface, icon sidebar.
 
 **Implement v2 as the default, with v1 available as a "hacker mode" toggle.**
 
 #### 8.1 — Graphics Foundation
 
-1. **VESA framebuffer** — use VBE (VESA BIOS Extensions) to switch to a graphical mode during Stage 2 boot (must be done in real mode before entering protected mode). Target: 1024x768x32bpp or 800x600x32bpp.
-2. **Framebuffer driver** (`drivers/framebuffer.c`) — write pixels directly to the linear framebuffer mapped into memory. Core functions: `fb_putpixel`, `fb_fill_rect`, `fb_draw_line`, `fb_blit`.
-3. **Bitmap font renderer** — embed a bitmap font (8x16 or similar) and render text character by character onto the framebuffer. Support basic text layout: line wrapping, scrolling regions, color.
-4. **Double buffering** — draw to a back buffer in RAM, then copy to the framebuffer to avoid flicker.
+1. **VESA framebuffer** — use VBE to switch to graphical mode during Stage 2 boot. Target: 1024x768x32bpp or 800x600x32bpp.
+2. **Framebuffer driver** (`drivers/framebuffer.c`) — `fb_putpixel`, `fb_fill_rect`, `fb_draw_line`, `fb_blit`.
+3. **Bitmap font renderer** — embed a bitmap font (8x16), render text onto the framebuffer.
+4. **Double buffering** — draw to a back buffer, then copy to framebuffer.
 
 #### 8.2 — Input
 
-1. **PS/2 Mouse driver** (`drivers/mouse.c`) — IRQ12, parse mouse packets (3-byte PS/2 protocol: buttons, dx, dy). Track cursor position.
-2. **Mouse cursor** — draw a small arrow sprite, XOR'd or with a saved background region.
-3. **Event system** — keyboard and mouse events dispatched to the focused window.
+1. **PS/2 Mouse driver** (`drivers/mouse.c`) — IRQ12, parse mouse packets, track cursor position.
+2. **Mouse cursor** — small arrow sprite.
+3. **Event system** — keyboard and mouse events dispatched to focused window.
 
 #### 8.3 — Window Manager
 
-1. **Window struct** — position, size, title, content buffer, flags (focused, visible, draggable).
-2. **Compositor** — draw windows back-to-front, handle overlapping, clip to screen bounds.
-3. **Window dragging** — click title bar + drag to move windows.
+1. **Window struct** — position, size, title, content buffer, flags.
+2. **Compositor** — draw windows back-to-front, handle overlapping.
+3. **Window dragging** — click title bar + drag to move.
 4. **Focus management** — click to focus, bring to front.
 
 #### 8.4 — Desktop Environment (targeting v2 mockup)
 
-1. **Top bar** — CLAOS logo, version, network status indicator, memory readout, uptime clock. Height: 36px. Semi-transparent white background.
-2. **Sidebar** — icon buttons: Chat (primary), Terminal, System Monitor, Files, Settings. Width: 56px. Left side.
-3. **Claude Chat Window** — the main interface:
-   - Chat bubble layout: user messages (purple bg, right-aligned), Claude responses (light gray bg, left-aligned)
-   - Text input field at the bottom with send button
-   - Quick action chips: "Debug a crash", "Write a driver", "Run Lua script", "System health"
-   - Scrollable message history
-4. **Right sidebar** — Claude status (connected/disconnected, model, latency), panic watcher status, running tasks list, recent chats.
+1. **Top bar** — CLAOS logo, version, network status, memory, uptime.
+2. **Sidebar** — icon buttons: Chat, Terminal, System Monitor, Files, Settings.
+3. **Claude Chat Window** — chat bubble layout, text input, quick action chips.
+4. **Right sidebar** — Claude status, panic watcher, running tasks, recent chats.
 5. **Color scheme:**
    - Background: `#f4f1ec` (warm cream)
-   - Cards/panels: `#ffffff` with `0.5px solid rgba(0,0,0,0.06)` border
    - Primary accent: `#7F77DD` (Claude purple)
-   - Secondary accent: `#639922` (status green)
-   - Text primary: `#2C2C2A`
-   - Text secondary: `#888780`
-   - Text muted: `#B4B2A9`
-   - Claude bubble bg: `#f9f8f6`
-   - User bubble bg: `#7F77DD` with white text
-6. **Terminal window** — alternative view: classic VGA-style terminal in a window. Toggle between Chat and Terminal views.
+   - Status green: `#639922`
+   - User bubble: `#7F77DD` with white text
+   - Claude bubble: `#f9f8f6`
+6. **Terminal window** — classic VGA-style terminal in a window.
 
-**Milestone:** Boot CLAOS into a graphical desktop. Click the chat icon. Type a message to Claude. See the response in a chat bubble. Move the window around. Feel like you're using an actual AI-native operating system.
+**Milestone:** Boot CLAOS into a graphical desktop. Click the chat icon. Type a message to Claude. See the response in a chat bubble. Move the window around.
 
 ---
 
@@ -393,72 +364,86 @@ claos/
 │   ├── main.c                # Kernel entry point
 │   ├── gdt.c / gdt.h         # Global Descriptor Table
 │   ├── idt.c / idt.h         # Interrupt Descriptor Table
-│   ├── isr.c / isr.asm       # Interrupt Service Routines
-│   ├── irq.c / irq.asm       # IRQ handlers
+│   ├── isr.asm               # CPU exception stubs
+│   ├── irq.asm               # Hardware IRQ stubs
+│   ├── gdt_flush.asm         # GDT/IDT register loading
+│   ├── entry.asm             # Kernel entry stub
 │   ├── pmm.c / pmm.h         # Physical memory manager
 │   ├── vmm.c / vmm.h         # Virtual memory / paging
 │   ├── heap.c / heap.h       # kmalloc / kfree
-│   ├── scheduler.c           # Task scheduler
-│   ├── panic.c               # Kernel panic handler
-│   └── entropy.c             # Entropy pool for TLS
+│   ├── scheduler.c / .h      # Task scheduler + context switch
+│   ├── scheduler_asm.asm     # Context switch routine
+│   ├── panic.c / panic.h     # Kernel panic handler
+│   ├── entropy.c / entropy.h # Entropy pool for TLS
+│   └── string.c              # memcpy, memset, strlen, etc.
 ├── drivers/
 │   ├── vga.c / vga.h         # VGA text mode
-│   ├── keyboard.c            # PS/2 keyboard
-│   ├── mouse.c               # PS/2 mouse (Phase 8)
-│   ├── timer.c               # PIT timer
+│   ├── keyboard.c / .h       # PS/2 keyboard
+│   ├── timer.c / timer.h     # PIT timer
 │   ├── pci.c / pci.h         # PCI bus enumeration
 │   ├── e1000.c / e1000.h     # Intel e1000 NIC
-│   ├── ata.c / ata.h         # ATA/IDE block device
+│   ├── ata.c / ata.h         # ATA/IDE block device (Phase 6)
+│   ├── mouse.c               # PS/2 mouse (Phase 8)
 │   └── framebuffer.c         # VESA framebuffer (Phase 8)
-├── fs/
-│   ├── chaosfs.c / chaosfs.h     # ChaosFS filesystem driver
+├── fs/                        # Phase 6
+│   ├── chaosfs.c / chaosfs.h # ChaosFS filesystem driver
 │   └── vfs.c / vfs.h         # Virtual filesystem layer
 ├── net/
-│   ├── ethernet.c            # Ethernet frames
-│   ├── arp.c                 # ARP
-│   ├── ipv4.c                # IPv4
-│   ├── udp.c                 # UDP (for DNS)
-│   ├── dns.c                 # DNS resolver
-│   ├── tcp.c                 # TCP
-│   ├── tls.c                 # BearSSL I/O callbacks
-│   ├── tls_client.c          # High-level TLS API
-│   ├── ca_certs.c            # Trusted root CA certificates
-│   └── https.c               # HTTPS client
+│   ├── net.h                 # Network config & byte-order helpers
+│   ├── ethernet.c / .h       # Ethernet frames
+│   ├── arp.c / arp.h         # ARP
+│   ├── ipv4.c / ipv4.h       # IPv4
+│   ├── udp.c / udp.h         # UDP (for DNS)
+│   ├── dns.c / dns.h         # DNS resolver
+│   ├── tcp.c / tcp.h         # TCP
+│   ├── tls_client.c / .h     # TLS client (BearSSL wrapper)
+│   ├── ca_certs.c            # Root CA certificates
+│   └── https.c / https.h     # HTTPS client
 ├── lib/
-│   ├── bearssl/              # BearSSL source (ported)
+│   ├── bearssl/              # BearSSL TLS library (ported)
 │   │   ├── inc/              # BearSSL headers
-│   │   ├── src/              # BearSSL source files
+│   │   ├── src/              # BearSSL source (~294 files)
 │   │   └── bearssl_shim.c    # CLAOS compatibility layer
-│   └── lua/                  # Lua 5.4 source (ported)
+│   └── lua/                  # Lua 5.4 (Phase 7)
 │       ├── src/              # Lua core source files
 │       └── lua_shim.c        # CLAOS compatibility layer
-├── lua/
-│   └── claos_lib.c           # CLAOS API bindings for Lua
 ├── claude/
-│   ├── claude.c              # Claude API protocol layer
-│   ├── json.c                # Minimal JSON builder/parser
-│   ├── config.h              # API key (DO NOT COMMIT)
-│   └── panic_handler.c       # Panic → Claude integration
+│   ├── claude.c / claude.h   # Claude API protocol layer
+│   ├── json.c / json.h       # Minimal JSON builder/parser
+│   ├── panic_handler.c / .h  # Panic → Claude integration
+│   ├── config.h              # API key & settings (NOT committed)
+│   └── config.h.example      # Template for config.h
 ├── shell/
-│   └── shell.c               # Interactive ClaudeShell
-├── gui/                      # Phase 8
-│   ├── compositor.c          # Window manager / compositor
+│   └── shell.c / shell.h     # ClaudeShell
+├── lua/                       # Phase 7
+│   └── claos_lib.c           # CLAOS API bindings for Lua
+├── gui/                       # Phase 8
+│   ├── compositor.c          # Window manager
 │   ├── desktop.c             # Desktop environment
-│   ├── widgets.c             # UI components (buttons, text input, etc.)
+│   ├── widgets.c             # UI components
 │   ├── chat_window.c         # Claude chat interface
 │   ├── terminal_window.c     # Terminal emulator window
 │   └── font.c                # Bitmap font renderer
-├── include/                  # Shared headers
-│   └── string.h              # Freestanding string functions
-├── scripts/                  # Pre-installed Lua scripts (copied to ChaosFS)
+├── tools/
+│   ├── setup_toolchain.sh    # Toolchain installer
+│   └── mkchaosfs.py          # ChaosFS disk image tool (Phase 6)
+├── scripts/                   # Pre-installed Lua scripts (Phase 7)
 │   ├── welcome.lua
 │   ├── sysmon.lua
 │   ├── chat.lua
 │   └── crash_test.lua
+├── include/
+│   ├── types.h               # Fixed-width types
+│   ├── string.h              # String function declarations
+│   ├── io.h                  # Port I/O + serial debug
+│   └── stdlib.h              # Minimal stdlib stub for BearSSL
+├── Docs/
+│   └── CLAOS-build-prompt-v3.md
 ├── linker.ld                 # Kernel linker script
 ├── Makefile                  # Build system
-├── .gitignore                # Excludes config.h with API key
-└── README.md                 # Project documentation
+├── run.bat                   # Windows QEMU launcher
+├── .gitignore                # Excludes config.h, build artifacts
+└── README.md
 ```
 
 ---
@@ -466,18 +451,18 @@ claos/
 ## Technical Specifications
 
 - **Architecture:** x86 (i686), 32-bit protected mode
-- **Language:** C (kernel, drivers, userspace) + x86 NASM assembly (boot, low-level)
-- **Compiler:** `i686-elf-gcc` (freestanding cross-compiler, `-ffreestanding -nostdlib`)
+- **Language:** C (kernel, drivers) + x86 NASM assembly (boot, low-level)
+- **Compiler:** `i686-elf-gcc` (freestanding, `-ffreestanding -nostdlib`)
 - **Assembler:** NASM
-- **Target VM:** QEMU (`qemu-system-i386`) with `-device e1000` for networking
+- **Target VM:** QEMU (`qemu-system-i386`) with `-device e1000`
 - **Boot method:** Legacy BIOS boot from raw disk image (not UEFI)
 - **Disk image:** Bootloader + kernel in raw sectors, ChaosFS data region at sector 2048
-- **Filesystem:** ChaosFS (custom) — contiguous allocation, long filenames, accessed via ATA PIO
+- **Filesystem:** ChaosFS (custom) — contiguous allocation, long filenames, ATA PIO
 - **TLS:** BearSSL (ported), TLS 1.2
 - **Scripting:** Lua 5.4 (ported), with CLAOS API bindings
-- **No external dependencies inside the OS** — no libc, no POSIX, no existing OS code. BearSSL and Lua are compiled freestanding into the kernel.
+- **No external dependencies** — BearSSL and Lua are the only libraries, both compiled freestanding
 - **Network:** Static IP, native TCP/IP + TLS + HTTPS, direct to api.anthropic.com
-- **QEMU launch flags:**
+- **QEMU launch:**
   ```bash
   qemu-system-i386 \
     -drive format=raw,file=claos.img \
@@ -489,65 +474,17 @@ claos/
 
 ---
 
-## QEMU Networking Setup
+## Implementation Order
 
-QEMU's user-mode networking provides:
-- Guest IP: `10.0.2.15` (CLAOS hardcodes this)
-- Gateway: `10.0.2.2` (host)
-- DNS: `10.0.2.3` (QEMU's built-in DNS proxy)
-- Subnet: `255.255.255.0`
-
-```c
-#define CLAOS_IP        {10, 0, 2, 15}
-#define CLAOS_GATEWAY   {10, 0, 2, 2}
-#define CLAOS_SUBNET    {255, 255, 255, 0}
-#define CLAOS_DNS       {10, 0, 2, 3}
-```
-
----
-
-## Boot Banner ASCII Art
-
-```
-   ██████╗██╗      █████╗  ██████╗ ███████╗
-  ██╔════╝██║     ██╔══██╗██╔═══██╗██╔════╝
-  ██║     ██║     ███████║██║   ██║███████╗
-  ██║     ██║     ██╔══██║██║   ██║╚════██║
-  ╚██████╗███████╗██║  ██║╚██████╔╝███████║
-   ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
-  Claude Assisted Operating System v0.1
-  ──────────────────────────────────────
-  "I am the kernel now."
-```
-
----
-
-## Implementation Order & Priority
-
-Build in this exact order. Each phase must compile and run before moving to the next:
-
-1. ~~**Toolchain + Makefile**~~ ✅
-2. ~~**Phase 1** — Boot, interrupts, VGA, keyboard~~ ✅
-3. ~~**Phase 2** — Memory management + scheduler~~ ✅
-4. ~~**Phase 3** — Network stack (e1000 → TCP)~~ ✅
-5. ~~**Phase 3.5** — TLS via BearSSL port~~ ✅
-6. ~~**Phase 4** — HTTPS client + Claude integration~~ ✅
-7. ~~**Phase 5** — Interactive shell~~ ✅
-8. **Phase 6** — ChaosFS custom filesystem (ATA driver → ChaosFS → VFS → shell commands) ← **NEXT**
-9. **Phase 7** — Embedded Lua (port Lua 5.4 → CLAOS API bindings → script runner)
-10. **Phase 8** — GUI (VESA framebuffer → window manager → Claude chat desktop)
-
----
-
-## Key Constraints
-
-- **ABSOLUTELY NO existing OS code.** No Linux headers, no glibc, no POSIX. Write everything from scratch. BearSSL and Lua 5.4 are the only external libraries, both compiled freestanding into the kernel.
-- **No bootloader frameworks** like GRUB — write the bootloader manually.
-- **No relay scripts or host-side helpers.** CLAOS does its own networking end-to-end.
-- **Freestanding C only** — `-ffreestanding -nostdlib -fno-builtin`. Implement your own `memcpy`, `memset`, `strlen`, etc.
-- **Keep it simple.** This is a toy. A single-user, single-core system is fine.
-- **Comments everywhere.** This is an educational project. Every function should have a comment explaining what it does and why.
-- **Test after every phase.** Boot in QEMU and verify before moving on.
+1. ~~**Phase 1** — Boot & Kernel Foundation~~ ✅
+2. ~~**Phase 2** — Memory Management & Scheduler~~ ✅
+3. ~~**Phase 3** — Network Stack~~ ✅
+4. ~~**Phase 3.5** — TLS via BearSSL~~ ✅
+5. ~~**Phase 4** — HTTPS Client & Claude Integration~~ ✅
+6. ~~**Phase 5** — ClaudeShell~~ ✅
+7. **Phase 6** — ChaosFS custom filesystem ← **NEXT**
+8. **Phase 7** — Embedded Lua
+9. **Phase 8** — GUI Desktop
 
 ---
 
@@ -555,19 +492,11 @@ Build in this exact order. Each phase must compile and run before moving to the 
 
 CLAOS should have personality. It's an AI-native OS and it knows it.
 
-- Boot messages should be witty ("Initializing consciousness... done.")
-- Panic messages should be dramatic ("KERNEL PANIC: I have made a terrible mistake. Calling Claude for help...")
-- The shell prompt should feel alive
-- When Claude responds to a crash, display it like a conversation:
-  ```
-  [CLAOS PANIC] Page fault at 0xDEADBEEF
-  [CLAOS → Claude] Sending crash report via HTTPS...
-  [Claude] It looks like you dereferenced a null pointer in scheduler.c line 47.
-           The task struct wasn't initialized before being added to the run queue.
-           Try initializing task->stack_top before calling schedule_task().
-  ```
+- Boot messages: witty ("Initializing consciousness... done.")
+- Panic messages: dramatic ("KERNEL PANIC: I have made a terrible mistake.")
 - Filesystem messages: "Mounting consciousness storage... done."
 - Lua messages: "Lua 5.4 awakened. The scripting layer stirs."
+- Unrecognized shell commands go to Claude automatically
 
 ---
 
@@ -577,11 +506,11 @@ The project is "done" (for ultimate meme status) when you can:
 
 1. Boot CLAOS in QEMU
 2. See the ASCII art banner
-3. Type `claude Hello, I am talking to you from my own operating system` and get a real response directly from api.anthropic.com over HTTPS
+3. Type `claude Hello, I am talking to you from my own operating system` and get a real response over native HTTPS
 4. Type `panic` and watch Claude diagnose the crash
-5. Type `ls /scripts` and see Lua scripts on the filesystem
+5. Type `ls /scripts` and see Lua scripts on the ChaosFS filesystem
 6. Type `lua /scripts/chat.lua` and have a multi-turn Claude conversation in Lua
-7. Boot into the GUI, click the chat window, talk to Claude with a mouse and keyboard in a graphical desktop environment
+7. Boot into the GUI, click the chat window, talk to Claude in a graphical desktop
 8. Screenshot it, post it, achieve internet immortality
 9. **Ultimate bonus:** Boot on real hardware and do all of the above
 
