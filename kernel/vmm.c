@@ -22,25 +22,37 @@
  * We statically allocate it in BSS so we don't need the heap yet. */
 static uint32_t page_directory[1024] __attribute__((aligned(4096)));
 
-/* Page tables for the first 16MB (4 tables × 4MB each = 16MB identity-mapped).
- * This covers the kernel, VGA buffer, and leaves room for the heap. */
+/* Page tables for fine-grained mapping of the first 16MB */
 static uint32_t page_tables[4][1024] __attribute__((aligned(4096)));
 
 void vmm_init(void) {
     /* Clear the page directory */
     memset(page_directory, 0, sizeof(page_directory));
 
-    /* Identity-map the first 16MB using our statically allocated page tables.
-     * Each page table covers 4MB (1024 pages × 4KB). */
+    /* Identity-map the first 16MB using 4KB page tables
+     * (fine-grained control for kernel space). */
     for (int t = 0; t < 4; t++) {
         for (int p = 0; p < 1024; p++) {
             uint32_t phys = (t * 1024 + p) * PAGE_SIZE;
             page_tables[t][p] = phys | PTE_PRESENT | PTE_WRITABLE;
         }
-
-        /* Install this page table in the page directory */
         page_directory[t] = (uint32_t)&page_tables[t] | PTE_PRESENT | PTE_WRITABLE;
     }
+
+    /* Identity-map the rest of the 4GB address space using 4MB pages (PSE).
+     * This is needed because PCI devices (e1000 NIC) have MMIO registers
+     * mapped at high physical addresses (e.g., 0xFEBC0000).
+     * For a toy OS, identity-mapping everything is the simplest approach. */
+    for (int i = 4; i < 1024; i++) {
+        uint32_t phys = i * 0x400000;  /* 4MB per entry */
+        page_directory[i] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_4MB;
+    }
+
+    /* Enable PSE (Page Size Extension) in CR4 so 4MB pages work */
+    uint32_t cr4;
+    __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
+    cr4 |= 0x10;   /* CR4.PSE = bit 4 */
+    __asm__ volatile ("mov %0, %%cr4" : : "r"(cr4));
 
     /* Load the page directory into CR3 */
     __asm__ volatile ("mov %0, %%cr3" : : "r"(&page_directory));
@@ -51,7 +63,7 @@ void vmm_init(void) {
     cr0 |= 0x80000000;
     __asm__ volatile ("mov %0, %%cr0" : : "r"(cr0));
 
-    serial_print("[VMM] Paging enabled, 16MB identity-mapped\n");
+    serial_print("[VMM] Paging enabled, full 4GB identity-mapped\n");
 }
 
 void vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags) {

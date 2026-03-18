@@ -28,7 +28,7 @@ QEMU    = /c/msys64/mingw64/bin/qemu-system-i386
 # -I include -I kernel -I drivers: Header search paths
 CFLAGS  = -ffreestanding -nostdlib -fno-builtin -fno-pie \
           -Wall -Wextra -Wno-unused-parameter \
-          -I include -I kernel -I drivers -O1 -g
+          -I include -I kernel -I drivers -I net -O1 -g
 LDFLAGS = -T linker.ld -nostdlib
 ASFLAGS_BIN = -f bin
 ASFLAGS_ELF = -f elf32
@@ -46,7 +46,15 @@ C_SOURCES = kernel/main.c \
             kernel/scheduler.c \
             drivers/vga.c \
             drivers/keyboard.c \
-            drivers/timer.c
+            drivers/timer.c \
+            drivers/pci.c \
+            drivers/e1000.c \
+            net/ethernet.c \
+            net/arp.c \
+            net/ipv4.c \
+            net/udp.c \
+            net/dns.c \
+            net/tcp.c
 
 # Assembly source files (ELF object files for linking with C)
 ASM_SOURCES = kernel/entry.asm \

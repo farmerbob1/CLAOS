@@ -35,13 +35,23 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - **Full interrupt infrastructure** — GDT, IDT, PIC remapping, ISR/IRQ handlers
 - **Kernel panic handler** — dramatic red screen of death with register dump, press any key to reboot
 
-### Phase 2 — Memory Management & Scheduler (Current)
+### Phase 2 — Memory Management & Scheduler
 - **Physical memory manager** — bitmap-based page allocator (4KB pages), E820 memory map parsing
-- **Virtual memory (paging)** — page directory/tables, 16MB identity-mapped kernel space
+- **Virtual memory (paging)** — page directory/tables, full 4GB identity-mapped via PSE (4MB pages)
 - **Kernel heap allocator** — first-fit free list with block splitting and coalescing (`kmalloc`/`kfree`)
 - **Preemptive round-robin scheduler** — context switching via timer IRQ, task sleep/yield, up to 16 concurrent tasks
 - **Background tasks** — spinning status indicator and live uptime counter running alongside the shell
-- **Interactive prompt** with commands: `help`, `clear`, `uptime`, `sysinfo`, `tasks`, `panic`, `reboot`
+
+### Phase 3 — Network Stack (Current)
+- **PCI bus enumeration** — scan for devices by vendor/device ID, read BARs
+- **Intel e1000 NIC driver** — MMIO register access, DMA TX/RX descriptor rings, MAC address, link status
+- **Ethernet layer** — frame construction/parsing, EtherType dispatch
+- **ARP** — request/reply, static cache, gateway MAC resolution at boot
+- **IPv4** — packet construction/parsing, header checksum, gateway routing
+- **UDP** — send/receive with port binding (used by DNS)
+- **DNS resolver** — A record queries over UDP, hostname-to-IP resolution
+- **TCP** — full state machine (SYN/SYN-ACK/ACK/FIN), sequence tracking, receive buffering
+- **Interactive prompt** with commands: `help`, `clear`, `uptime`, `sysinfo`, `tasks`, `net`, `dns <hostname>`, `panic`, `reboot`
 
 ## Roadmap
 
@@ -49,8 +59,9 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 |-------|--------|-------------|
 | 1 | **Done** | Boot & Kernel Foundation — boot, interrupts, VGA, keyboard, timer |
 | 2 | **Done** | Memory Management & Scheduler — PMM, paging, heap, multitasking |
-| 3 | Planned | Network Stack — e1000 NIC, Ethernet, ARP, IPv4, TCP, HTTP |
-| 4 | Planned | Claude Integration — talk to Claude API from the kernel |
+| 3 | **Done** | Network Stack — PCI, e1000 NIC, Ethernet, ARP, IPv4, UDP, DNS, TCP |
+| 3.5 | Planned | TLS via BearSSL — port BearSSL for native HTTPS (no relay needed) |
+| 4 | Planned | HTTPS Client & Claude Integration — talk directly to api.anthropic.com |
 | 5 | Planned | Interactive Shell — full ClaudeShell with AI-powered commands |
 | 6 | Stretch | GUI — framebuffer graphics, windows, Claude chat window |
 
@@ -162,7 +173,17 @@ claos/
 ├── drivers/
 │   ├── vga.c / vga.h       # VGA text mode (80x25)
 │   ├── keyboard.c / .h     # PS/2 keyboard
-│   └── timer.c / timer.h   # PIT timer
+│   ├── timer.c / timer.h   # PIT timer
+│   ├── pci.c / pci.h       # PCI bus enumeration
+│   └── e1000.c / e1000.h   # Intel e1000 NIC driver
+├── net/
+│   ├── net.h               # Network config & byte-order helpers
+│   ├── ethernet.c / .h     # Ethernet frames
+│   ├── arp.c / arp.h       # ARP (address resolution)
+│   ├── ipv4.c / ipv4.h     # IPv4 packets
+│   ├── udp.c / udp.h       # UDP (for DNS)
+│   ├── dns.c / dns.h       # DNS resolver
+│   └── tcp.c / tcp.h       # TCP (connection-oriented transport)
 ├── include/
 │   ├── types.h             # Fixed-width types
 │   ├── string.h            # String function declarations

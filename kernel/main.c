@@ -22,6 +22,14 @@
 #include "vmm.h"
 #include "heap.h"
 #include "scheduler.h"
+#include "e1000.h"
+#include "ethernet.h"
+#include "arp.h"
+#include "ipv4.h"
+#include "udp.h"
+#include "dns.h"
+#include "tcp.h"
+#include "net.h"
 
 /* IRQ handler functions defined in driver files */
 extern void timer_handler(void);
@@ -100,6 +108,17 @@ static void task_uptime_display(void) {
     }
 }
 
+/*
+ * Background task: continuously polls the NIC for incoming packets.
+ * Without this, ARP/TCP responses would never be processed.
+ */
+static void task_net_poll(void) {
+    while (1) {
+        net_poll();
+        task_sleep(10);     /* Poll every ~10ms */
+    }
+}
+
 /* The CLAOS boot banner — displayed in glorious VGA text mode */
 static void print_banner(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -111,7 +130,7 @@ static void print_banner(void) {
     vga_print("   ####  ######  ##  ##   ####   ####\n");
 
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("\n  Claude Assisted Operating System v0.1\n");
+    vga_print("\n  Claude Assisted Operating System v0.3\n");
 
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  ========================================\n");
@@ -218,14 +237,51 @@ void kernel_main(void) {
     boot_msg("Interrupts", "ENABLED");
     serial_print("[CLAOS] Interrupts enabled\n");
 
-    /* Create demo tasks to prove multitasking works */
+    /* Step 12: Network stack */
+    arp_init();
+    tcp_init();
+    dns_init();
+
+    bool nic_ok = e1000_init();
+    if (nic_ok) {
+        boot_msg("e1000 NIC", "OK");
+
+        /* Show NIC info */
+        uint8_t mac[6];
+        e1000_get_mac(mac);
+        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+        vga_print("         MAC: ");
+        for (int i = 0; i < 6; i++) {
+            if (i > 0) vga_putchar(':');
+            const char hex[] = "0123456789ABCDEF";
+            vga_putchar(hex[mac[i] >> 4]);
+            vga_putchar(hex[mac[i] & 0xF]);
+        }
+        vga_print("  IP: 10.0.2.15\n");
+
+        /* Resolve gateway MAC via ARP */
+        boot_msg("Resolving gateway (ARP)", "...");
+        uint8_t gw_mac[6];
+        if (arp_get_gateway_mac(gw_mac)) {
+            boot_msg("Gateway MAC resolved", "OK");
+        } else {
+            boot_msg("Gateway ARP", "TIMEOUT (network may not work)");
+        }
+    } else {
+        boot_msg("e1000 NIC", "NOT FOUND (no network)");
+    }
+
+    /* Create background tasks */
     task_create("spinner", task_status_indicator);
     task_create("uptime", task_uptime_display);
-    boot_msg("Background tasks (spinner, uptime)", "OK");
+    if (nic_ok) {
+        task_create("net_poll", task_net_poll);
+    }
+    boot_msg("Background tasks", "OK");
 
     vga_print("\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.2 ready. Type something!\n");
+    vga_print("  CLAOS v0.3 ready. Type something!\n");
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("  (Shell coming in Phase 5)\n\n");
 
@@ -247,6 +303,8 @@ void kernel_main(void) {
             vga_print("    uptime  - Show system uptime\n");
             vga_print("    sysinfo - Show memory and task info\n");
             vga_print("    tasks   - Show running tasks\n");
+            vga_print("    net     - Show network configuration\n");
+            vga_print("    dns <h> - Resolve a hostname\n");
             vga_print("    panic   - Trigger a kernel panic (for fun)\n");
             vga_print("    reboot  - Reboot the system\n");
             vga_set_color(VGA_WHITE, VGA_BLACK);
@@ -317,6 +375,58 @@ void kernel_main(void) {
             vga_print("  ");
             vga_print_dec(task_get_count());
             vga_print(" task(s) total\n");
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+        } else if (strcmp(line, "net") == 0) {
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            vga_print("  --- Network Configuration ---\n");
+            vga_print("  IP:      10.0.2.15\n");
+            vga_print("  Gateway: 10.0.2.2\n");
+            vga_print("  DNS:     10.0.2.3\n");
+            vga_print("  Subnet:  255.255.255.0\n");
+            vga_print("  NIC:     Intel e1000 (82540EM)\n");
+
+            uint8_t mac[6];
+            e1000_get_mac(mac);
+            vga_print("  MAC:     ");
+            for (int i = 0; i < 6; i++) {
+                if (i > 0) vga_putchar(':');
+                const char hex[] = "0123456789ABCDEF";
+                vga_putchar(hex[mac[i] >> 4]);
+                vga_putchar(hex[mac[i] & 0xF]);
+            }
+            vga_print("\n");
+
+            vga_print("  Link:    ");
+            if (e1000_link_up()) {
+                vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+                vga_print("UP\n");
+            } else {
+                vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                vga_print("DOWN\n");
+            }
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+        } else if (strncmp(line, "dns ", 4) == 0) {
+            const char* hostname = line + 4;
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            vga_print("  Resolving ");
+            vga_print(hostname);
+            vga_print("...\n");
+
+            uint32_t ip = dns_resolve(hostname);
+            if (ip) {
+                vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+                vga_print("  ");
+                vga_print(hostname);
+                vga_print(" -> ");
+                vga_print_dec((ip >> 24) & 0xFF); vga_putchar('.');
+                vga_print_dec((ip >> 16) & 0xFF); vga_putchar('.');
+                vga_print_dec((ip >> 8) & 0xFF);  vga_putchar('.');
+                vga_print_dec(ip & 0xFF);
+                vga_print("\n");
+            } else {
+                vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                vga_print("  DNS resolution failed.\n");
+            }
             vga_set_color(VGA_WHITE, VGA_BLACK);
         } else if (strcmp(line, "panic") == 0) {
             kernel_panic("User-initiated panic. This is fine. Everything is fine.");
