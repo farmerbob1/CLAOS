@@ -39,11 +39,11 @@ bool udp_send(uint32_t dst_ip, uint16_t src_port, uint16_t dst_port,
     hdr->src_port = htons(src_port);
     hdr->dst_port = htons(dst_port);
     hdr->length = htons(total_len);
-    hdr->checksum = 0;  /* UDP checksum is optional in IPv4 */
+    hdr->checksum = 0;
 
     memcpy(udp_tx_buf + sizeof(struct udp_header), data, data_len);
 
-    /* Calculate UDP checksum (optional but good practice) */
+    /* Calculate UDP checksum over pseudo-header + UDP segment */
     hdr->checksum = tcp_udp_checksum(htonl(CLAOS_IP), htonl(dst_ip),
                                       IP_PROTO_UDP, udp_tx_buf, total_len);
     if (hdr->checksum == 0) hdr->checksum = 0xFFFF;

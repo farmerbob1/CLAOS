@@ -31,4 +31,8 @@ void eth_receive(const void* frame, uint16_t length);
 /* Poll for incoming packets and process them */
 void net_poll(void);
 
+/* Signal that background polling is active (or not) */
+void net_set_bg_poll(bool active);
+bool net_bg_poll_active(void);
+
 #endif /* CLAOS_ETHERNET_H */

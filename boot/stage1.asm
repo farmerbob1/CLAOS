@@ -2,57 +2,47 @@
 ; CLAOS — Claude Assisted Operating System
 ; stage1.asm — Stage 1 MBR Bootloader (512 bytes)
 ;
-; This is the very first code that runs when the BIOS loads our disk.
-; It lives in the first 512 bytes (the Master Boot Record).
+; Loads Stage 2 + kernel from disk using INT 13h Extended Read (LBA).
+; This supports loading much larger payloads than the old CHS method.
 ;
-; Job:
-;   1. Set up segment registers and stack
-;   2. Load Stage 2 from disk sectors 2-17 (16 sectors = 8KB) using BIOS INT 13h
-;   3. Jump to Stage 2
+; We load in 32KB chunks to different memory segments, covering up to
+; 512KB of data (more than enough for kernel + BearSSL).
 ;
-; BIOS loads us at 0x7C00 in real mode (16-bit).
+; Memory layout after loading:
+;   0x7C00 - 0x7DFF : Stage 1 (this file, 512 bytes)
+;   0x7E00 - 0xFFFF : Stage 2 + start of kernel (~32KB)
+;   0x10000+        : Rest of kernel (loaded by Stage 2)
 ;
 
 [BITS 16]
 [ORG 0x7C00]
 
 STAGE2_ADDR     equ 0x7E00      ; Stage 2 loads right after us
-STAGE2_SECTORS  equ 64          ; 64 sectors = 32KB for Stage 2 + kernel
+STAGE2_SECTORS  equ 64          ; 64 sectors = 32KB initial load
 
 start:
-    ; Clear interrupts while we set up
     cli
-
-    ; Set up segment registers — all pointing to 0
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00              ; Stack grows downward from where we're loaded
-
-    ; Re-enable interrupts
+    mov sp, 0x7C00
     sti
 
     ; Save boot drive number (BIOS passes it in DL)
     mov [boot_drive], dl
 
-    ; Print a loading message
     mov si, msg_loading
     call print_string
 
-    ; Load Stage 2 from disk
-    ; We use INT 13h, AH=02h (Read sectors)
-    mov ah, 0x02                ; BIOS read sectors function
-    mov al, STAGE2_SECTORS      ; Number of sectors to read
-    mov ch, 0                   ; Cylinder 0
-    mov cl, 2                   ; Start from sector 2 (sector 1 is the MBR)
-    mov dh, 0                   ; Head 0
-    mov dl, [boot_drive]        ; Drive number
-    mov bx, STAGE2_ADDR         ; ES:BX = destination buffer
+    ; Load Stage 2 + kernel start using INT 13h Extended Read
+    ; This avoids CHS geometry limits and supports LBA addressing
+    mov si, dap             ; DS:SI = pointer to Disk Address Packet
+    mov ah, 0x42            ; Extended read
+    mov dl, [boot_drive]
     int 0x13
-    jc disk_error               ; Carry flag set = error
+    jc disk_error
 
-    ; Jump to Stage 2!
     mov si, msg_ok
     call print_string
     jmp STAGE2_ADDR
@@ -67,17 +57,14 @@ hang:
     hlt
     jmp hang
 
-; ──────────────────────────────────────
-; print_string — Print null-terminated string at SI using BIOS teletype
-; ──────────────────────────────────────
 print_string:
     pusha
 .loop:
-    lodsb                       ; Load byte at [SI] into AL, increment SI
-    or al, al                   ; Check for null terminator
+    lodsb
+    or al, al
     jz .done
-    mov ah, 0x0E                ; BIOS teletype output
-    mov bh, 0                   ; Page 0
+    mov ah, 0x0E
+    mov bh, 0
     int 0x10
     jmp .loop
 .done:
@@ -85,16 +72,21 @@ print_string:
     ret
 
 ; ──────────────────────────────────────
-; Data
+; Disk Address Packet for INT 13h AH=42h
 ; ──────────────────────────────────────
-boot_drive:     db 0
-msg_loading:    db "CLAOS: Loading Stage 2...", 0
-msg_ok:         db " OK", 13, 10, 0
-msg_disk_err:   db " DISK ERROR!", 13, 10, 0
+dap:
+    db 0x10             ; Size of DAP (16 bytes)
+    db 0                ; Reserved
+    dw STAGE2_SECTORS   ; Number of sectors to read
+    dw STAGE2_ADDR      ; Offset (destination buffer)
+    dw 0x0000           ; Segment (0x0000:STAGE2_ADDR)
+    dd 1                ; LBA start (sector 1 = second sector)
+    dd 0                ; LBA high 32 bits (always 0 for us)
 
-; ──────────────────────────────────────
-; Padding and boot signature
-; MBR must be exactly 512 bytes, ending with 0xAA55
-; ──────────────────────────────────────
+boot_drive:     db 0
+msg_loading:    db "CLAOS: Loading...", 0
+msg_ok:         db " OK", 13, 10, 0
+msg_disk_err:   db " DISK ERR!", 13, 10, 0
+
 times 510 - ($ - $$) db 0
 dw 0xAA55

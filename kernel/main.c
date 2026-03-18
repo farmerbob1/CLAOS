@@ -29,7 +29,9 @@
 #include "udp.h"
 #include "dns.h"
 #include "tcp.h"
+#include "tls_client.h"
 #include "net.h"
+#include "entropy.h"
 
 /* IRQ handler functions defined in driver files */
 extern void timer_handler(void);
@@ -113,6 +115,7 @@ static void task_uptime_display(void) {
  * Without this, ARP/TCP responses would never be processed.
  */
 static void task_net_poll(void) {
+    net_set_bg_poll(true);
     while (1) {
         net_poll();
         task_sleep(10);     /* Poll every ~10ms */
@@ -237,10 +240,15 @@ void kernel_main(void) {
     boot_msg("Interrupts", "ENABLED");
     serial_print("[CLAOS] Interrupts enabled\n");
 
-    /* Step 12: Network stack */
+    /* Step 12: Entropy pool (needed for TLS) */
+    entropy_init();
+    boot_msg("Entropy pool", "OK");
+
+    /* Step 13: Network stack */
     arp_init();
     tcp_init();
     dns_init();
+    tls_init();
 
     bool nic_ok = e1000_init();
     if (nic_ok) {
@@ -305,6 +313,7 @@ void kernel_main(void) {
             vga_print("    tasks   - Show running tasks\n");
             vga_print("    net     - Show network configuration\n");
             vga_print("    dns <h> - Resolve a hostname\n");
+            vga_print("    tls     - Test TLS connection to Anthropic\n");
             vga_print("    panic   - Trigger a kernel panic (for fun)\n");
             vga_print("    reboot  - Reboot the system\n");
             vga_set_color(VGA_WHITE, VGA_BLACK);
@@ -426,6 +435,23 @@ void kernel_main(void) {
             } else {
                 vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
                 vga_print("  DNS resolution failed.\n");
+            }
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+        } else if (strcmp(line, "tls") == 0) {
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            vga_print("  Testing TLS handshake with api.anthropic.com...\n");
+            tls_connection_t* tls = tls_connect("api.anthropic.com", 443);
+            if (tls) {
+                vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+                vga_print("  TLS handshake SUCCEEDED!\n");
+                vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+                vga_print("  Encrypted connection to Anthropic established.\n");
+                tls_close(tls);
+                vga_print("  Connection closed.\n");
+            } else {
+                vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                vga_print("  TLS handshake FAILED.\n");
+                vga_print("  Check serial output for details.\n");
             }
             vga_set_color(VGA_WHITE, VGA_BLACK);
         } else if (strcmp(line, "panic") == 0) {

@@ -17,3 +17,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+dump.pcap
+serial_out.txt
+serial_log.txt

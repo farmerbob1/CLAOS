@@ -44,32 +44,31 @@ uint16_t ip_checksum(const void* data, int length) {
 
 uint16_t tcp_udp_checksum(uint32_t src_ip, uint32_t dst_ip, uint8_t protocol,
                           const void* data, uint16_t length) {
-    /* Pseudo-header for TCP/UDP checksum calculation */
-    struct {
-        uint32_t src_ip;
-        uint32_t dst_ip;
-        uint8_t  zero;
-        uint8_t  protocol;
-        uint16_t length;
-    } __attribute__((packed)) pseudo;
-
-    pseudo.src_ip = src_ip;
-    pseudo.dst_ip = dst_ip;
-    pseudo.zero = 0;
-    pseudo.protocol = protocol;
-    pseudo.length = htons(length);
-
-    /* Compute checksum over pseudo-header + data */
+    /*
+     * TCP/UDP checksum is computed over a pseudo-header + the segment data.
+     * All values in the pseudo-header must be in network byte order.
+     * src_ip and dst_ip are already in network byte order (caller uses htonl).
+     *
+     * Pseudo-header: src_ip(4) + dst_ip(4) + zero(1) + protocol(1) + length(2)
+     */
     uint32_t sum = 0;
-    const uint16_t* ptr;
 
-    /* Sum pseudo-header */
-    ptr = (const uint16_t*)&pseudo;
-    for (int i = 0; i < 6; i++)
-        sum += ptr[i];
+    /* Sum source IP (two 16-bit words) */
+    sum += (src_ip >> 16) & 0xFFFF;
+    sum += src_ip & 0xFFFF;
 
-    /* Sum data */
-    ptr = (const uint16_t*)data;
+    /* Sum destination IP (two 16-bit words) */
+    sum += (dst_ip >> 16) & 0xFFFF;
+    sum += dst_ip & 0xFFFF;
+
+    /* Protocol + zero byte = (0x00 << 8 | protocol) in network byte order */
+    sum += htons((uint16_t)protocol);
+
+    /* Length in network byte order */
+    sum += htons(length);
+
+    /* Sum the actual data (TCP or UDP header + payload) */
+    const uint16_t* ptr = (const uint16_t*)data;
     int remaining = length;
     while (remaining > 1) {
         sum += *ptr++;
@@ -79,6 +78,7 @@ uint16_t tcp_udp_checksum(uint32_t src_ip, uint32_t dst_ip, uint8_t protocol,
         sum += *(const uint8_t*)ptr;
     }
 
+    /* Fold 32-bit sum to 16 bits */
     while (sum >> 16)
         sum = (sum & 0xFFFF) + (sum >> 16);
 
@@ -109,17 +109,14 @@ bool ipv4_send(uint32_t dst_ip, uint8_t protocol,
     /* Copy payload after header */
     memcpy(ipv4_tx_buf + sizeof(struct ipv4_header), payload, payload_len);
 
-    /* Determine next-hop MAC address.
-     * If destination is on our subnet, ARP for it directly.
-     * Otherwise, send to the gateway. */
-    uint32_t next_hop = dst_ip;
-    if ((dst_ip & CLAOS_MASK) != (CLAOS_IP & CLAOS_MASK)) {
-        next_hop = CLAOS_GW;  /* Route through gateway */
-    }
+    /* In QEMU's user-mode networking, ALL traffic goes through the gateway.
+     * Even "local" subnet IPs like 10.0.2.3 (DNS) are virtual — the gateway
+     * handles routing for all of them. Always use the gateway MAC. */
+    uint32_t next_hop = CLAOS_GW;
 
     uint8_t dest_mac[6];
     if (!arp_resolve(next_hop, dest_mac)) {
-        serial_print("[IPv4] ARP resolution failed for next hop\n");
+        serial_print("[IPv4] ARP failed for next hop\n");
         return false;
     }
 
@@ -146,6 +143,17 @@ void ipv4_receive(const void* data, uint16_t length) {
     const uint8_t* payload = (const uint8_t*)data + ihl;
     uint16_t payload_len = total_len - ihl;
 
+    serial_print("[IPv4] RX proto=");
+    char hex[] = "0123456789ABCDEF";
+    serial_putchar(hex[(hdr->protocol >> 4) & 0xF]);
+    serial_putchar(hex[hdr->protocol & 0xF]);
+    serial_print(" len=");
+    char buf[8]; int bpos = 0; int bv = payload_len;
+    if (bv == 0) buf[bpos++] = '0';
+    else { while(bv > 0) { buf[bpos++] = '0' + bv%10; bv/=10; } }
+    for (int j = bpos-1; j >= 0; j--) serial_putchar(buf[j]);
+    serial_putchar('\n');
+
     /* Dispatch by protocol */
     switch (hdr->protocol) {
         case IP_PROTO_UDP:
@@ -155,6 +163,6 @@ void ipv4_receive(const void* data, uint16_t length) {
             tcp_receive(ntohl(hdr->src_ip), payload, payload_len);
             break;
         default:
-            break;  /* Ignore ICMP, etc. for now */
+            break;
     }
 }

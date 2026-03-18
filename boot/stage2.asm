@@ -2,152 +2,157 @@
 ; CLAOS — Claude Assisted Operating System
 ; stage2.asm — Stage 2 Bootloader
 ;
-; This runs after Stage 1 loads us into memory at 0x7E00.
-;
-; Job:
-;   1. Detect available memory via BIOS INT 15h, E820
-;   2. Enable the A20 line (so we can address above 1MB)
-;   3. Set up the Global Descriptor Table (GDT) for protected mode
-;   4. Switch to 32-bit protected mode
-;   5. Jump to the C kernel entry point
+; Simple approach: Load kernel to low memory (0x10000-0x90000 = 512KB)
+; in real mode, then copy it to 0x100000 after entering protected mode.
 ;
 
 [BITS 16]
 [ORG 0x7E00]
 
-KERNEL_ADDR     equ 0x100000    ; Kernel loaded at 1MB (we copy it there after paging)
-KERNEL_LOAD     equ 0x10000     ; Temporarily load kernel at 64KB in real mode
+KERNEL_PHYS     equ 0x100000    ; Final kernel location
+LOAD_BASE       equ 0x10000     ; Temp load area (64KB-576KB)
+LOAD_SEG_START  equ 0x1000      ; Segment for 0x10000
 
 stage2_start:
     mov si, msg_stage2
     call print_string_rm
 
-    ; ──────────────────────────────────────
-    ; Step 1: Detect memory map using BIOS INT 15h, E820
-    ; Store entries at 0x8000, count at 0x7FF0
-    ; ──────────────────────────────────────
     call detect_memory
 
-    ; ──────────────────────────────────────
-    ; Step 2: Enable the A20 line
-    ; The A20 line is a legacy hack. With it disabled, the 21st address
-    ; bit is forced to 0, which means we can't address above 1MB.
-    ; We try multiple methods because hardware is weird.
-    ; ──────────────────────────────────────
     call enable_a20
-
     mov si, msg_a20
     call print_string_rm
 
-    ; ──────────────────────────────────────
-    ; Step 3: Load the GDT register
-    ; The GDT defines memory segments for protected mode.
-    ; We set up a flat memory model (base=0, limit=4GB) for both
-    ; code and data segments.
-    ; ──────────────────────────────────────
-    cli                         ; Disable interrupts for mode switch
-    lgdt [gdt_descriptor]       ; Load GDT
+    ; ── Load kernel from disk to low memory ──
+    mov si, msg_loading
+    call print_string_rm
 
-    ; ──────────────────────────────────────
-    ; Step 4: Enter protected mode
-    ; Set bit 0 of CR0 (Protection Enable)
-    ; ──────────────────────────────────────
+    ; Load in chunks of 64 sectors (32KB) to different segments
+    mov word [cur_seg], LOAD_SEG_START
+    mov dword [cur_lba], 10         ; Kernel starts at LBA 10
+    mov word [chunks_left], 16      ; 16 chunks × 32KB = 512KB max
+
+.load_loop:
+    cmp word [chunks_left], 0
+    je .load_done
+
+    ; Set up DAP for extended read
+    mov byte [dap], 0x10
+    mov byte [dap+1], 0
+    mov word [dap+2], 64            ; 64 sectors = 32KB
+    mov word [dap+4], 0x0000        ; Offset = 0
+    mov ax, [cur_seg]
+    mov word [dap+6], ax            ; Segment
+    mov eax, [cur_lba]
+    mov dword [dap+8], eax          ; LBA
+    mov dword [dap+12], 0
+
+    mov si, dap
+    mov ah, 0x42
+    mov dl, 0x80
+    int 0x13
+    jc .load_done                   ; If read fails, assume we've read everything
+
+    ; Advance: next segment += 0x800 (32KB / 16 = 0x800 paragraphs)
+    add word [cur_seg], 0x800
+    add dword [cur_lba], 64
+    dec word [chunks_left]
+
+    ; Don't load past 0x8000:0 = 0x80000 (to avoid overwriting stuff)
+    cmp word [cur_seg], 0x8000
+    jae .load_done
+
+    mov al, '.'
+    mov ah, 0x0E
+    int 0x10
+    jmp .load_loop
+
+.load_done:
+    mov si, msg_done
+    call print_string_rm
+
+    ; Calculate how many bytes we loaded
+    mov ax, [cur_seg]
+    sub ax, LOAD_SEG_START
+    shl eax, 4                      ; Segment × 16 = bytes
+    mov [kernel_size], eax
+
+    ; ── Enter protected mode ──
+    cli
+    lgdt [gdt_descriptor]
     mov eax, cr0
     or eax, 1
     mov cr0, eax
+    jmp 0x08:pm_entry
 
-    ; Far jump to flush the CPU pipeline and load CS with the
-    ; code segment selector (0x08) from our GDT
-    jmp 0x08:protected_mode_entry
+; Variables
+cur_seg:        dw 0
+cur_lba:        dd 0
+chunks_left:    dw 0
+kernel_size:    dd 0
+dap:            times 16 db 0
 
-; ──────────────────────────────────────────────────────────────
-; detect_memory — Use BIOS INT 15h, E820 to get the memory map
-; Stores entries at 0x8000, entry count at 0x7FF0
 ; ──────────────────────────────────────────────────────────────
 detect_memory:
     pusha
-    mov di, 0x8004              ; Start storing entries at 0x8004 (leave room for count)
-    xor ebx, ebx               ; Continuation value (0 = start)
-    xor si, si                  ; Entry counter
-
+    mov di, 0x8004
+    xor ebx, ebx
+    xor si, si
 .e820_loop:
-    mov eax, 0xE820             ; Function number
-    mov ecx, 24                 ; Size of one entry (24 bytes)
-    mov edx, 0x534D4150         ; 'SMAP' magic number
+    mov eax, 0xE820
+    mov ecx, 24
+    mov edx, 0x534D4150
     int 0x15
-    jc .e820_done               ; Carry set = error or end
-
-    cmp eax, 0x534D4150         ; BIOS should return 'SMAP' in EAX
+    jc .e820_done
+    cmp eax, 0x534D4150
     jne .e820_done
-
-    inc si                      ; Count this entry
-    add di, 24                  ; Move to next entry slot
-
-    test ebx, ebx              ; If EBX=0, we're done
+    inc si
+    add di, 24
+    test ebx, ebx
     jnz .e820_loop
-
 .e820_done:
-    mov [0x8000], si            ; Store entry count at 0x8000
+    mov [0x8000], si
     popa
     ret
 
-; ──────────────────────────────────────────────────────────────
-; enable_a20 — Try multiple methods to enable the A20 gate
-; ──────────────────────────────────────────────────────────────
 enable_a20:
-    ; Method 1: BIOS function
     mov ax, 0x2401
     int 0x15
-
-    ; Method 2: Keyboard controller
-    call .a20_keyboard
+    call .a20_kb
     ret
-
-.a20_keyboard:
-    ; Wait for keyboard controller to be ready
-    call .a20_wait_input
-    mov al, 0xAD               ; Disable keyboard
+.a20_kb:
+    call .wi
+    mov al, 0xAD
     out 0x64, al
-
-    call .a20_wait_input
-    mov al, 0xD0               ; Read output port
+    call .wi
+    mov al, 0xD0
     out 0x64, al
-
-    call .a20_wait_output
-    in al, 0x60                ; Read output port data
+    call .wo
+    in al, 0x60
     push ax
-
-    call .a20_wait_input
-    mov al, 0xD1               ; Write output port
+    call .wi
+    mov al, 0xD1
     out 0x64, al
-
-    call .a20_wait_input
+    call .wi
     pop ax
-    or al, 2                   ; Set A20 bit
+    or al, 2
     out 0x60, al
-
-    call .a20_wait_input
-    mov al, 0xAE               ; Re-enable keyboard
+    call .wi
+    mov al, 0xAE
     out 0x64, al
-
-    call .a20_wait_input
+    call .wi
     ret
-
-.a20_wait_input:
+.wi:
     in al, 0x64
     test al, 2
-    jnz .a20_wait_input
+    jnz .wi
     ret
-
-.a20_wait_output:
+.wo:
     in al, 0x64
     test al, 1
-    jz .a20_wait_output
+    jz .wo
     ret
 
-; ──────────────────────────────────────────────────────────────
-; print_string_rm — Print string in real mode (same as Stage 1)
-; ──────────────────────────────────────────────────────────────
 print_string_rm:
     pusha
 .loop:
@@ -162,81 +167,52 @@ print_string_rm:
     popa
     ret
 
-; ──────────────────────────────────────
-; Messages (real mode)
-; ──────────────────────────────────────
-msg_stage2:     db "CLAOS: Stage 2 loaded. Entering protected mode...", 13, 10, 0
-msg_a20:        db "CLAOS: A20 line enabled.", 13, 10, 0
+msg_stage2:  db "CLAOS: Stage 2.", 13, 10, 0
+msg_a20:     db "CLAOS: A20 OK.", 13, 10, 0
+msg_loading: db "CLAOS: Loading kernel", 0
+msg_done:    db " OK.", 13, 10, 0
 
 ; ══════════════════════════════════════════════════════════════
-; Global Descriptor Table (GDT)
-;
-; We use a flat memory model: both code and data segments span
-; the entire 4GB address space. This is the simplest setup and
-; lets us use paging for real memory protection later.
-;
-; Entry format (8 bytes each):
-;   - Limit (20 bits), Base (32 bits), Access byte, Flags
-; ══════════════════════════════════════════════════════════════
-
+; GDT
 gdt_start:
-
-gdt_null:                       ; Null descriptor (required, index 0)
-    dd 0
-    dd 0
-
-gdt_code:                       ; Code segment: selector 0x08
-    dw 0xFFFF                   ; Limit bits 0-15
-    dw 0x0000                   ; Base bits 0-15
-    db 0x00                     ; Base bits 16-23
-    db 10011010b                ; Access: present, ring 0, code, readable
-    db 11001111b                ; Flags: 4KB granularity, 32-bit + Limit 16-19
-    db 0x00                     ; Base bits 24-31
-
-gdt_data:                       ; Data segment: selector 0x10
-    dw 0xFFFF                   ; Limit bits 0-15
-    dw 0x0000                   ; Base bits 0-15
-    db 0x00                     ; Base bits 16-23
-    db 10010010b                ; Access: present, ring 0, data, writable
-    db 11001111b                ; Flags: 4KB granularity, 32-bit + Limit 16-19
-    db 0x00                     ; Base bits 24-31
-
+    dd 0, 0                                             ; Null
+    dw 0xFFFF, 0x0000                                   ; Code: 0x08
+    db 0x00, 10011010b, 11001111b, 0x00
+    dw 0xFFFF, 0x0000                                   ; Data: 0x10
+    db 0x00, 10010010b, 11001111b, 0x00
 gdt_end:
 
 gdt_descriptor:
-    dw gdt_end - gdt_start - 1  ; GDT size (minus 1)
-    dd gdt_start                 ; GDT base address
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
 
 ; ══════════════════════════════════════════════════════════════
-; 32-bit Protected Mode
-; ══════════════════════════════════════════════════════════════
-
 [BITS 32]
 
-protected_mode_entry:
-    ; Set up segment registers with data segment selector (0x10)
+pm_entry:
+    ; Set up data segments
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-
-    ; Set up a stack at 0x90000 (plenty of room)
     mov esp, 0x90000
 
-    ; Jump to our C kernel!
-    ; The kernel is linked at 0x9000 (see linker.ld).
-    ; Stage 1 loaded us + kernel as a contiguous block starting at 0x7E00,
-    ; so the kernel code sits at 0x9000 in physical memory.
-    call 0x9000
+    ; Copy kernel from 0x10000 to 0x100000
+    ; We loaded up to 512KB (0x80000 bytes). Just copy the max —
+    ; copying extra zeros is harmless and avoids variable address issues.
+    mov esi, LOAD_BASE              ; Source: where we loaded in real mode
+    mov edi, KERNEL_PHYS            ; Destination: 1MB
+    mov ecx, 0x70000                ; Copy 448KB (safe amount below 0x80000)
+    rep movsb                       ; Copy!
 
-    ; If the kernel ever returns, hang
+    ; Jump to the kernel at 1MB
+    call KERNEL_PHYS
+
     cli
     hlt
     jmp $
 
-; Pad Stage 2 to exactly fill the space between 0x7E00 and 0x9000
-; so the kernel binary lands at the right address in the disk image.
-; 0x9000 - 0x7E00 = 0x1200 = 4608 bytes
+; Pad to 9 sectors (0x1200 bytes)
 times 0x1200 - ($ - $$) db 0

@@ -147,10 +147,13 @@ bool arp_resolve(uint32_t ip, uint8_t mac_out[6]) {
     /* Send ARP request and wait for reply */
     arp_send_request(ip);
 
-    /* Poll for up to 3 seconds */
+    /* Wait for up to 3 seconds */
     uint32_t start = timer_get_ticks();
-    while (timer_get_ticks() - start < 300) {  /* 300 ticks = 3 seconds at 100Hz */
-        net_poll();
+    while (timer_get_ticks() - start < 300) {
+        if (net_bg_poll_active())
+            __asm__ volatile ("hlt");   /* Background task handles it */
+        else
+            net_poll();                 /* No background task yet, poll directly */
         entry = arp_cache_lookup(ip);
         if (entry) {
             memcpy(mac_out, entry->mac, 6);

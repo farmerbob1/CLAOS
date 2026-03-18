@@ -203,14 +203,27 @@ uint32_t dns_resolve(const char* hostname) {
     /* Send query to DNS server */
     serial_print("[DNS] Resolving: ");
     serial_print(hostname);
-    serial_putchar('\n');
+    serial_print(" (");
+    /* Print query size */
+    char sz[8]; int szi = 0;
+    int tmp = pos;
+    if (tmp == 0) sz[szi++] = '0';
+    else { while(tmp > 0) { sz[szi++] = '0' + tmp%10; tmp/=10; } }
+    for (int j = szi-1; j >= 0; j--) serial_putchar(sz[j]);
+    serial_print(" bytes)\n");
 
-    udp_send(CLAOS_DNS, DNS_LOCAL_PORT, DNS_PORT, query, pos);
+    bool sent = udp_send(CLAOS_DNS, DNS_LOCAL_PORT, DNS_PORT, query, pos);
+    serial_print("[DNS] UDP send: ");
+    serial_print(sent ? "OK" : "FAILED");
+    serial_putchar('\n');
 
     /* Wait for response (up to 5 seconds) */
     uint32_t start = timer_get_ticks();
     while (!dns_response_received && (timer_get_ticks() - start) < 500) {
-        net_poll();
+        if (net_bg_poll_active())
+            __asm__ volatile ("hlt");
+        else
+            net_poll();
     }
 
     if (!dns_response_received) {

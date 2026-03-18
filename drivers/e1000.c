@@ -42,9 +42,10 @@ struct e1000_rx_desc {
 /* MMIO base address */
 static volatile uint32_t* mmio_base = NULL;
 
-/* Descriptor rings — aligned to 16 bytes as required by hardware */
-static struct e1000_tx_desc tx_descs[E1000_NUM_TX_DESC] __attribute__((aligned(16)));
-static struct e1000_rx_desc rx_descs[E1000_NUM_RX_DESC] __attribute__((aligned(16)));
+/* Descriptor rings — aligned to 16 bytes as required by hardware.
+ * Marked volatile because the NIC writes to these via DMA. */
+static volatile struct e1000_tx_desc tx_descs[E1000_NUM_TX_DESC] __attribute__((aligned(16)));
+static volatile struct e1000_rx_desc rx_descs[E1000_NUM_RX_DESC] __attribute__((aligned(16)));
 
 /* Packet buffers for RX descriptors */
 static uint8_t rx_buffers[E1000_NUM_RX_DESC][E1000_RX_BUFFER_SIZE] __attribute__((aligned(16)));
@@ -92,7 +93,7 @@ static void e1000_init_rx(void) {
     }
 
     /* Tell the NIC where the RX ring is */
-    e1000_write(E1000_RDBAL, (uint32_t)&rx_descs);
+    e1000_write(E1000_RDBAL, (uint32_t)(void*)rx_descs);
     e1000_write(E1000_RDBAH, 0);
     e1000_write(E1000_RDLEN, E1000_NUM_RX_DESC * sizeof(struct e1000_rx_desc));
     e1000_write(E1000_RDH, 0);
@@ -107,9 +108,17 @@ static void e1000_init_rx(void) {
 
 /* Set up the transmit descriptor ring */
 static void e1000_init_tx(void) {
-    memset(tx_descs, 0, sizeof(tx_descs));
+    for (int i = 0; i < E1000_NUM_TX_DESC; i++) {
+        tx_descs[i].addr = 0;
+        tx_descs[i].length = 0;
+        tx_descs[i].cmd = 0;
+        tx_descs[i].status = 0;
+        tx_descs[i].cso = 0;
+        tx_descs[i].css = 0;
+        tx_descs[i].special = 0;
+    }
 
-    e1000_write(E1000_TDBAL, (uint32_t)&tx_descs);
+    e1000_write(E1000_TDBAL, (uint32_t)(void*)tx_descs);
     e1000_write(E1000_TDBAH, 0);
     e1000_write(E1000_TDLEN, E1000_NUM_TX_DESC * sizeof(struct e1000_tx_desc));
     e1000_write(E1000_TDH, 0);
@@ -197,7 +206,7 @@ bool e1000_send(const void* data, uint16_t length) {
     e1000_write(E1000_TDT, tx_cur);
 
     /* Wait for the NIC to finish sending (poll the DD bit) */
-    int timeout = 100000;
+    int timeout = 1000000;
     while (!(tx_descs[old_cur].status & E1000_TXD_STAT_DD) && timeout > 0) {
         timeout--;
     }

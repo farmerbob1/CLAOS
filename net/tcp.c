@@ -260,7 +260,7 @@ struct tcp_connection* tcp_connect(uint32_t dst_ip, uint16_t dst_port) {
     /* Wait for connection to be established (up to 10 seconds) */
     uint32_t start = timer_get_ticks();
     while (conn->state == TCP_SYN_SENT && (timer_get_ticks() - start) < 1000) {
-        net_poll();
+        __asm__ volatile ("hlt");
     }
 
     if (conn->state != TCP_ESTABLISHED) {
@@ -291,7 +291,7 @@ int tcp_send(struct tcp_connection* conn, const void* data, uint16_t length) {
         /* Wait briefly for ACK (simple flow control) */
         uint32_t wait_start = timer_get_ticks();
         while (timer_get_ticks() - wait_start < 50) {
-            net_poll();
+            __asm__ volatile ("hlt");
         }
 
         ptr += chunk;
@@ -309,8 +309,8 @@ int tcp_recv(struct tcp_connection* conn, void* buf, uint16_t max_len, bool bloc
         uint32_t start = timer_get_ticks();
         while (tcp_rx_available(conn) == 0 &&
                conn->state == TCP_ESTABLISHED &&
-               (timer_get_ticks() - start) < 3000) {    /* 30 second timeout */
-            net_poll();
+               (timer_get_ticks() - start) < 3000) {
+            __asm__ volatile ("hlt");
         }
     }
 
@@ -339,7 +339,7 @@ void tcp_close(struct tcp_connection* conn) {
         while (conn->state != TCP_CLOSED &&
                conn->state != TCP_TIME_WAIT &&
                (timer_get_ticks() - start) < 500) {
-            net_poll();
+            __asm__ volatile ("hlt");
         }
     }
 

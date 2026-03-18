@@ -42,7 +42,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - **Preemptive round-robin scheduler** — context switching via timer IRQ, task sleep/yield, up to 16 concurrent tasks
 - **Background tasks** — spinning status indicator and live uptime counter running alongside the shell
 
-### Phase 3 — Network Stack (Current)
+### Phase 3 — Network Stack
 - **PCI bus enumeration** — scan for devices by vendor/device ID, read BARs
 - **Intel e1000 NIC driver** — MMIO register access, DMA TX/RX descriptor rings, MAC address, link status
 - **Ethernet layer** — frame construction/parsing, EtherType dispatch
@@ -51,7 +51,16 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - **UDP** — send/receive with port binding (used by DNS)
 - **DNS resolver** — A record queries over UDP, hostname-to-IP resolution
 - **TCP** — full state machine (SYN/SYN-ACK/ACK/FIN), sequence tracking, receive buffering
-- **Interactive prompt** with commands: `help`, `clear`, `uptime`, `sysinfo`, `tasks`, `net`, `dns <hostname>`, `panic`, `reboot`
+
+### Phase 3.5 — TLS via BearSSL (Current)
+- **BearSSL ported** — 294 source files compiled for freestanding i686, x86 intrinsics disabled
+- **Entropy pool** — RDTSC + timer ticks + xorshift PRNG for TLS key generation
+- **TLS client wrapper** — connects BearSSL's SSL engine to our TCP stack via I/O callbacks
+- **Certificate handling** — custom X.509 engine extracts server public keys from leaf certificates
+- **GTS Root R4 CA certificate** embedded for api.anthropic.com validation
+- **Successful TLS 1.2 handshake** with `api.anthropic.com:443` — no relay, no host scripts
+- **Bootloader rewritten** — loads 292KB kernel to 1MB using INT 13h extended reads + protected mode copy
+- **Commands**: `help`, `clear`, `uptime`, `sysinfo`, `tasks`, `net`, `dns <hostname>`, `tls`, `panic`, `reboot`
 
 ## Roadmap
 
@@ -60,7 +69,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | 1 | **Done** | Boot & Kernel Foundation — boot, interrupts, VGA, keyboard, timer |
 | 2 | **Done** | Memory Management & Scheduler — PMM, paging, heap, multitasking |
 | 3 | **Done** | Network Stack — PCI, e1000 NIC, Ethernet, ARP, IPv4, UDP, DNS, TCP |
-| 3.5 | Planned | TLS via BearSSL — port BearSSL for native HTTPS (no relay needed) |
+| 3.5 | **Done** | TLS via BearSSL — native TLS 1.2 handshake, no relay needed |
 | 4 | Planned | HTTPS Client & Claude Integration — talk directly to api.anthropic.com |
 | 5 | Planned | Interactive Shell — full ClaudeShell with AI-powered commands |
 | 6 | Stretch | GUI — framebuffer graphics, windows, Claude chat window |
@@ -183,7 +192,14 @@ claos/
 │   ├── ipv4.c / ipv4.h     # IPv4 packets
 │   ├── udp.c / udp.h       # UDP (for DNS)
 │   ├── dns.c / dns.h       # DNS resolver
-│   └── tcp.c / tcp.h       # TCP (connection-oriented transport)
+│   ├── tcp.c / tcp.h       # TCP (connection-oriented transport)
+│   ├── tls_client.c / .h   # TLS client (BearSSL wrapper)
+│   └── ca_certs.c          # Trusted root CA certificates
+├── lib/
+│   └── bearssl/            # BearSSL TLS library (ported)
+│       ├── inc/            # BearSSL public headers
+│       ├── src/            # BearSSL source (~294 files)
+│       └── bearssl_shim.c  # CLAOS compatibility layer
 ├── include/
 │   ├── types.h             # Fixed-width types
 │   ├── string.h            # String function declarations

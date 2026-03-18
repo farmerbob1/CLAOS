@@ -59,8 +59,19 @@ void eth_receive(const void* frame, uint16_t length) {
     }
 }
 
+/* Flag: is the background net_poll task running?
+ * If not, other functions should call net_poll directly. */
+static bool bg_poll_active = false;
+
+void net_set_bg_poll(bool active) {
+    bg_poll_active = active;
+}
+
+bool net_bg_poll_active(void) {
+    return bg_poll_active;
+}
+
 void net_poll(void) {
-    /* Check for incoming packets */
     uint16_t len = e1000_receive(eth_rx_buf, sizeof(eth_rx_buf));
     if (len > 0) {
         eth_receive(eth_rx_buf, len);

@@ -16,10 +16,9 @@ ENTRY(kernel_main)
 
 SECTIONS
 {
-    /* Kernel starts at this address in memory.
-     * Stage 2 + kernel are loaded as one contiguous block starting at 0x7E00.
-     * We give the kernel a known offset within that block. */
-    . = 0x9000;
+    /* Kernel is loaded to 1MB (0x100000) by Stage 2.
+     * This gives us plenty of space for a large kernel with BearSSL. */
+    . = 0x100000;
 
     .text ALIGN(16) : {
         *(.text.entry)    /* Entry stub MUST be first */
