@@ -18,8 +18,9 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 
 ---
 
-## Features (Phase 1 — Current)
+## Features
 
+### Phase 1 — Boot & Kernel Foundation
 - **Custom 2-stage bootloader** — MBR → Protected Mode, no GRUB
 - **32-bit protected mode kernel** written in C and x86 assembly
 - **VGA text mode driver** — 80x25 color text with scrolling
@@ -27,14 +28,21 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - **PIT timer** — 100 Hz system tick with uptime tracking
 - **Full interrupt infrastructure** — GDT, IDT, PIC remapping, ISR/IRQ handlers
 - **Kernel panic handler** — dramatic red screen of death with register dump, press any key to reboot
-- **Interactive prompt** with built-in commands: `help`, `clear`, `uptime`, `panic`, `reboot`
+
+### Phase 2 — Memory Management & Scheduler (Current)
+- **Physical memory manager** — bitmap-based page allocator (4KB pages), E820 memory map parsing
+- **Virtual memory (paging)** — page directory/tables, 16MB identity-mapped kernel space
+- **Kernel heap allocator** — first-fit free list with block splitting and coalescing (`kmalloc`/`kfree`)
+- **Preemptive round-robin scheduler** — context switching via timer IRQ, task sleep/yield, up to 16 concurrent tasks
+- **Background tasks** — spinning status indicator and live uptime counter running alongside the shell
+- **Interactive prompt** with commands: `help`, `clear`, `uptime`, `sysinfo`, `tasks`, `panic`, `reboot`
 
 ## Roadmap
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | 1 | **Done** | Boot & Kernel Foundation — boot, interrupts, VGA, keyboard, timer |
-| 2 | Planned | Memory Management & Scheduler — PMM, paging, heap, multitasking |
+| 2 | **Done** | Memory Management & Scheduler — PMM, paging, heap, multitasking |
 | 3 | Planned | Network Stack — e1000 NIC, Ethernet, ARP, IPv4, TCP, HTTP |
 | 4 | Planned | Claude Integration — talk to Claude API from the kernel |
 | 5 | Planned | Interactive Shell — full ClaudeShell with AI-powered commands |
@@ -139,6 +147,11 @@ claos/
 │   ├── irq.asm             # Hardware IRQ stubs
 │   ├── gdt_flush.asm       # GDT/IDT register loading
 │   ├── panic.c / panic.h   # Kernel panic handler
+│   ├── pmm.c / pmm.h       # Physical memory manager (bitmap)
+│   ├── vmm.c / vmm.h       # Virtual memory / paging
+│   ├── heap.c / heap.h     # Kernel heap (kmalloc/kfree)
+│   ├── scheduler.c / .h    # Preemptive round-robin scheduler
+│   ├── scheduler_asm.asm   # Context switch routine
 │   └── string.c            # memcpy, memset, strlen, etc.
 ├── drivers/
 │   ├── vga.c / vga.h       # VGA text mode (80x25)

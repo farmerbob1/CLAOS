@@ -18,21 +18,86 @@
 #include "gdt.h"
 #include "idt.h"
 #include "panic.h"
+#include "pmm.h"
+#include "vmm.h"
+#include "heap.h"
+#include "scheduler.h"
 
 /* IRQ handler functions defined in driver files */
 extern void timer_handler(void);
 extern void keyboard_handler(void);
 
-/* Timer IRQ wrapper — called from the interrupt dispatcher */
+/* Kernel end address from linker script — marks where free memory begins */
+extern uint32_t _kernel_end;
+
+/* Timer IRQ wrapper — ticks the timer AND runs the scheduler */
 static void timer_irq_handler(struct registers* regs) {
-    (void)regs;  /* Unused */
+    (void)regs;
     timer_handler();
+    schedule();     /* Preemptive multitasking! */
 }
 
 /* Keyboard IRQ wrapper */
 static void keyboard_irq_handler(struct registers* regs) {
-    (void)regs;  /* Unused */
+    (void)regs;
     keyboard_handler();
+}
+
+/*
+ * Demo task: blinks a character in the top-right corner of the screen.
+ * This proves the scheduler is actually running multiple tasks.
+ */
+static void task_status_indicator(void) {
+    volatile uint16_t* vga = (uint16_t*)0xB8000;
+    /* Position: row 0, col 79 (top-right corner) */
+    int pos = 79;
+    const char spinner[] = "|/-\\";
+    int i = 0;
+
+    while (1) {
+        vga[pos] = (uint16_t)(0x0A00 | spinner[i % 4]); /* Green on black */
+        i++;
+        task_sleep(250);    /* Update 4 times per second */
+    }
+}
+
+/*
+ * Demo task: shows uptime counter in the top-right area.
+ */
+static void task_uptime_display(void) {
+    volatile uint16_t* vga = (uint16_t*)0xB8000;
+
+    while (1) {
+        uint32_t uptime = timer_get_uptime();
+
+        /* Display "Up:XXXXs" at row 0, col 69 */
+        int pos = 69;
+        uint8_t color = 0x08;  /* Dark grey */
+        const char* prefix = "Up:";
+        for (int i = 0; prefix[i]; i++)
+            vga[pos++] = (uint16_t)(color << 8 | prefix[i]);
+
+        /* Print uptime digits */
+        char buf[8];
+        int len = 0;
+        uint32_t v = uptime;
+        if (v == 0) buf[len++] = '0';
+        else {
+            while (v > 0 && len < 6) {
+                buf[len++] = '0' + (v % 10);
+                v /= 10;
+            }
+        }
+        for (int i = len - 1; i >= 0; i--)
+            vga[pos++] = (uint16_t)(color << 8 | buf[i]);
+        vga[pos++] = (uint16_t)(color << 8 | 's');
+
+        /* Clear any leftover characters */
+        while (pos < 78)
+            vga[pos++] = (uint16_t)(color << 8 | ' ');
+
+        task_sleep(1000);   /* Update once per second */
+    }
 }
 
 /* The CLAOS boot banner — displayed in glorious VGA text mode */
@@ -115,16 +180,54 @@ void kernel_main(void) {
     boot_msg("PS/2 Keyboard", "OK");
     serial_print("[CLAOS] Keyboard OK\n");
 
-    /* Step 7: Enable interrupts — the system is now live! */
+    /* Step 7: Physical memory manager */
+    pmm_init((uint32_t)&_kernel_end);
+    boot_msg("Physical memory", "OK");
+    serial_print("[CLAOS] PMM OK\n");
+
+    /* Print memory stats */
+    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+    vga_print("         ");
+    vga_print_dec(pmm_get_total_memory() / 1024 / 1024);
+    vga_print("MB detected, ");
+    vga_print_dec(pmm_get_free_pages() * 4);
+    vga_print("KB free (");
+    vga_print_dec(pmm_get_free_pages());
+    vga_print(" pages)\n");
+
+    /* Step 8: Virtual memory (paging) */
+    vmm_init();
+    boot_msg("Virtual memory (paging)", "OK");
+    serial_print("[CLAOS] VMM OK\n");
+
+    /* Step 9: Kernel heap — place it after the kernel in physical memory.
+     * We give it 1MB of space, starting at the page after _kernel_end. */
+    uint32_t heap_start_addr = ((uint32_t)&_kernel_end + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+    uint32_t heap_size = 1024 * 1024;   /* 1MB heap */
+    heap_init(heap_start_addr, heap_size);
+    boot_msg("Kernel heap (1MB)", "OK");
+    serial_print("[CLAOS] Heap OK\n");
+
+    /* Step 10: Scheduler */
+    scheduler_init();
+    boot_msg("Task scheduler", "OK");
+    serial_print("[CLAOS] Scheduler OK\n");
+
+    /* Step 11: Enable interrupts — the system is now live! */
     __asm__ volatile ("sti");
     boot_msg("Interrupts", "ENABLED");
-    serial_print("[CLAOS] Interrupts enabled, entering main loop\n");
+    serial_print("[CLAOS] Interrupts enabled\n");
+
+    /* Create demo tasks to prove multitasking works */
+    task_create("spinner", task_status_indicator);
+    task_create("uptime", task_uptime_display);
+    boot_msg("Background tasks (spinner, uptime)", "OK");
 
     vga_print("\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.1 ready. Type something!\n");
+    vga_print("  CLAOS v0.2 ready. Type something!\n");
     vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_print("  (Phase 1 — Shell coming in Phase 5)\n\n");
+    vga_print("  (Shell coming in Phase 5)\n\n");
 
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
     vga_print("claos> ");
@@ -135,13 +238,15 @@ void kernel_main(void) {
     while (1) {
         keyboard_readline(line, sizeof(line));
 
-        /* Simple command handling for Phase 1 demo */
+        /* Command handling */
         if (strcmp(line, "help") == 0) {
             vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
             vga_print("  Available commands:\n");
             vga_print("    help    - Show this message\n");
             vga_print("    clear   - Clear the screen\n");
             vga_print("    uptime  - Show system uptime\n");
+            vga_print("    sysinfo - Show memory and task info\n");
+            vga_print("    tasks   - Show running tasks\n");
             vga_print("    panic   - Trigger a kernel panic (for fun)\n");
             vga_print("    reboot  - Reboot the system\n");
             vga_set_color(VGA_WHITE, VGA_BLACK);
@@ -154,6 +259,64 @@ void kernel_main(void) {
             vga_print(" seconds (");
             vga_print_dec(timer_get_ticks());
             vga_print(" ticks)\n");
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+        } else if (strcmp(line, "sysinfo") == 0) {
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            vga_print("  --- System Information ---\n");
+            vga_print("  Physical RAM: ");
+            vga_print_dec(pmm_get_total_memory() / 1024 / 1024);
+            vga_print("MB\n");
+            vga_print("  Free pages:   ");
+            vga_print_dec(pmm_get_free_pages());
+            vga_print(" (");
+            vga_print_dec(pmm_get_free_pages() * 4);
+            vga_print("KB)\n");
+            vga_print("  Used pages:   ");
+            vga_print_dec(pmm_get_used_pages());
+            vga_print(" (");
+            vga_print_dec(pmm_get_used_pages() * 4);
+            vga_print("KB)\n");
+            vga_print("  Heap used:    ");
+            vga_print_dec(heap_get_used());
+            vga_print(" bytes\n");
+            vga_print("  Heap free:    ");
+            vga_print_dec(heap_get_free());
+            vga_print(" bytes\n");
+            vga_print("  Tasks:        ");
+            vga_print_dec(task_get_count());
+            vga_print(" running\n");
+            vga_print("  Uptime:       ");
+            vga_print_dec(timer_get_uptime());
+            vga_print(" seconds\n");
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+        } else if (strcmp(line, "tasks") == 0) {
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            vga_print("  --- Running Tasks ---\n");
+            vga_print("  ID  STATE      NAME\n");
+            for (int i = 0; i < MAX_TASKS; i++) {
+                struct task* t = task_get(i);
+                if (!t) continue;
+                vga_print("  ");
+                vga_print_dec(t->id);
+                if (t->id < 10) vga_print(" ");
+                vga_print("  ");
+                switch (t->state) {
+                    case TASK_RUNNING:  vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+                                       vga_print("running    "); break;
+                    case TASK_READY:    vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+                                       vga_print("ready      "); break;
+                    case TASK_SLEEPING: vga_set_color(VGA_YELLOW, VGA_BLACK);
+                                       vga_print("sleeping   "); break;
+                    default:           vga_print("unknown    "); break;
+                }
+                vga_set_color(VGA_WHITE, VGA_BLACK);
+                vga_print(t->name);
+                vga_print("\n");
+            }
+            vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+            vga_print("  ");
+            vga_print_dec(task_get_count());
+            vga_print(" task(s) total\n");
             vga_set_color(VGA_WHITE, VGA_BLACK);
         } else if (strcmp(line, "panic") == 0) {
             kernel_panic("User-initiated panic. This is fine. Everything is fine.");

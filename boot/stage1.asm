@@ -17,7 +17,7 @@
 [ORG 0x7C00]
 
 STAGE2_ADDR     equ 0x7E00      ; Stage 2 loads right after us
-STAGE2_SECTORS  equ 32          ; 32 sectors = 16KB for Stage 2 + kernel
+STAGE2_SECTORS  equ 64          ; 64 sectors = 32KB for Stage 2 + kernel
 
 start:
     ; Clear interrupts while we set up

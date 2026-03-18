@@ -40,6 +40,10 @@ C_SOURCES = kernel/main.c \
             kernel/idt.c \
             kernel/panic.c \
             kernel/string.c \
+            kernel/pmm.c \
+            kernel/vmm.c \
+            kernel/heap.c \
+            kernel/scheduler.c \
             drivers/vga.c \
             drivers/keyboard.c \
             drivers/timer.c
@@ -48,7 +52,8 @@ C_SOURCES = kernel/main.c \
 ASM_SOURCES = kernel/entry.asm \
               kernel/isr.asm \
               kernel/irq.asm \
-              kernel/gdt_flush.asm
+              kernel/gdt_flush.asm \
+              kernel/scheduler_asm.asm
 
 # ─── Object Files ────────────────────────────────────────────
 C_OBJECTS   = $(C_SOURCES:.c=.o)
