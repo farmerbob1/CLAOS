@@ -22,7 +22,7 @@ QEMU    = /c/msys64/mingw64/bin/qemu-system-i386
 # ─── Compiler Flags ──────────────────────────────────────────
 CFLAGS  = -ffreestanding -nostdlib -fno-builtin -fno-pie \
           -Wall -Wextra -Wno-unused-parameter \
-          -I include -I kernel -I drivers -I net -I claude \
+          -I include -I kernel -I drivers -I net -I claude -I shell \
           -I lib/bearssl/inc -I lib/bearssl/src \
           -O2 -g
 
@@ -64,6 +64,7 @@ C_SOURCES = kernel/main.c \
             claude/claude.c \
             claude/json.c \
             claude/panic_handler.c \
+            shell/shell.c \
             lib/bearssl/bearssl_shim.c
 
 # BearSSL source files (found automatically, excluding sysrng.c which we replace)

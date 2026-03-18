@@ -60,14 +60,21 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - **Successful TLS 1.2 handshake** with `api.anthropic.com:443` — no relay, no host scripts
 - **Bootloader rewritten** — loads 292KB kernel to 1MB using INT 13h extended reads + protected mode copy
 
-### Phase 4 — HTTPS Client & Claude Integration (Current)
+### Phase 4 — HTTPS Client & Claude Integration
 - **HTTPS client** — HTTP/1.1 over TLS with chunked transfer encoding support
 - **Claude protocol layer** — formats Anthropic Messages API requests, parses JSON responses
 - **Minimal JSON parser** — builds request bodies, extracts `content[0].text` from responses
-- **Runtime configuration** — `config` command to enter API key and model interactively (no recompilation needed)
+- **Runtime configuration** — `config` command to enter API key and model interactively
 - **Panic-to-Claude** — kernel panics automatically send crash reports to Claude for AI diagnosis
-- **`claude <message>`** — talk to Claude directly from the CLAOS shell over native HTTPS
+
+### Phase 5 — ClaudeShell (Current)
+- **Dedicated shell module** — extracted from kernel into `shell/shell.c`
+- **AI-first interface** — any unrecognized command is automatically sent to Claude with context
+- **Polished help** — clean two-column command listing
+- **Enhanced sysinfo** — shows NIC status, Claude config, and model name
+- **Formatted uptime** — displays minutes and seconds
 - **Commands**: `help`, `clear`, `uptime`, `sysinfo`, `tasks`, `net`, `dns`, `tls`, `config`, `claude <msg>`, `panic`, `reboot`
+- **Or just type anything** — it goes to Claude
 
 ## Roadmap
 
@@ -78,7 +85,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | 3 | **Done** | Network Stack — PCI, e1000 NIC, Ethernet, ARP, IPv4, UDP, DNS, TCP |
 | 3.5 | **Done** | TLS via BearSSL — native TLS 1.2 handshake, no relay needed |
 | 4 | **Done** | HTTPS Client & Claude Integration — talk directly to api.anthropic.com |
-| 5 | Planned | Interactive Shell — full ClaudeShell with AI-powered commands |
+| 5 | **Done** | ClaudeShell — AI-first interactive shell, unrecognized commands go to Claude |
 | 6 | Stretch | GUI — framebuffer graphics, windows, Claude chat window |
 
 ---
