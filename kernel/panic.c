@@ -13,6 +13,7 @@
 #include "vga.h"
 #include "io.h"
 #include "timer.h"
+#include "panic_handler.h"
 
 /* Human-readable names for CPU exceptions 0-31 */
 const char* exception_names[32] = {
@@ -79,10 +80,10 @@ static void panic_screen(const char* reason, struct registers* regs) {
         vga_print("\n\n");
     }
 
-    vga_set_color(VGA_LIGHT_CYAN, VGA_RED);
-    vga_print("  [CLAOS -> Claude] Crash report ready.\n");
-    vga_print("  (Claude integration coming in Phase 4...)\n\n");
+    /* Ask Claude for help diagnosing the crash */
+    panic_ask_claude(reason, regs);
 
+    vga_print("\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_RED);
     vga_print("  Press any key to reboot...\n");
 }

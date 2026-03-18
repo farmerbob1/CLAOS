@@ -32,6 +32,7 @@
 #include "tls_client.h"
 #include "net.h"
 #include "entropy.h"
+#include "claude.h"
 
 /* IRQ handler functions defined in driver files */
 extern void timer_handler(void);
@@ -133,7 +134,7 @@ static void print_banner(void) {
     vga_print("   ####  ######  ##  ##   ####   ####\n");
 
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("\n  Claude Assisted Operating System v0.3\n");
+    vga_print("\n  Claude Assisted Operating System v0.4\n");
 
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  ========================================\n");
@@ -279,6 +280,14 @@ void kernel_main(void) {
         boot_msg("e1000 NIC", "NOT FOUND (no network)");
     }
 
+    /* Step 14: Claude integration */
+    claude_init();
+    if (claude_is_configured()) {
+        boot_msg("Claude AI", "CONNECTED");
+    } else {
+        boot_msg("Claude AI", "NOT CONFIGURED (edit claude/config.h)");
+    }
+
     /* Create background tasks */
     task_create("spinner", task_status_indicator);
     task_create("uptime", task_uptime_display);
@@ -289,7 +298,7 @@ void kernel_main(void) {
 
     vga_print("\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.3 ready. Type something!\n");
+    vga_print("  CLAOS v0.4 ready. Type something!\n");
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("  (Shell coming in Phase 5)\n\n");
 
@@ -298,7 +307,7 @@ void kernel_main(void) {
     vga_set_color(VGA_WHITE, VGA_BLACK);
 
     /* Main loop: echo keyboard input (simple demo for Phase 1) */
-    char line[256];
+    char line[1024];
     while (1) {
         keyboard_readline(line, sizeof(line));
 
@@ -314,6 +323,8 @@ void kernel_main(void) {
             vga_print("    net     - Show network configuration\n");
             vga_print("    dns <h> - Resolve a hostname\n");
             vga_print("    tls     - Test TLS connection to Anthropic\n");
+            vga_print("    claude <msg> - Ask Claude a question\n");
+            vga_print("    config  - Configure Claude API key & model\n");
             vga_print("    panic   - Trigger a kernel panic (for fun)\n");
             vga_print("    reboot  - Reboot the system\n");
             vga_set_color(VGA_WHITE, VGA_BLACK);
@@ -452,6 +463,42 @@ void kernel_main(void) {
                 vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
                 vga_print("  TLS handshake FAILED.\n");
                 vga_print("  Check serial output for details.\n");
+            }
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+        } else if (strcmp(line, "config") == 0) {
+            claude_interactive_setup();
+        } else if (strncmp(line, "claude ", 7) == 0) {
+            const char* prompt = line + 7;
+            vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+            vga_print("  [CLAOS -> Claude] Sending...\n");
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+
+            static char response[CLAUDE_RESPONSE_MAX];
+            int len = claude_ask(prompt, response, sizeof(response));
+
+            if (len > 0) {
+                vga_set_color(VGA_LIGHT_MAGENTA, VGA_BLACK);
+                vga_print("  [Claude] ");
+                vga_set_color(VGA_WHITE, VGA_BLACK);
+                /* Word-wrap the response */
+                int col = 10;
+                for (int i = 0; i < len; i++) {
+                    if (response[i] == '\n') {
+                        vga_print("\n  ");
+                        col = 2;
+                    } else {
+                        if (col >= 76) {
+                            vga_print("\n  ");
+                            col = 2;
+                        }
+                        vga_putchar(response[i]);
+                        col++;
+                    }
+                }
+                vga_print("\n");
+            } else {
+                vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                vga_print("  Failed to reach Claude.\n");
             }
             vga_set_color(VGA_WHITE, VGA_BLACK);
         } else if (strcmp(line, "panic") == 0) {

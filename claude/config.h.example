@@ -1,0 +1,29 @@
+/*
+ * CLAOS — Claude Assisted Operating System
+ * config.h — Claude API Configuration
+ *
+ * Copy this file to config.h and fill in your settings:
+ *   cp config.h.example config.h
+ *
+ * DO NOT commit config.h — it contains your API key!
+ */
+
+#ifndef CLAOS_CLAUDE_CONFIG_H
+#define CLAOS_CLAUDE_CONFIG_H
+
+/* Your Anthropic API key — get one at https://console.anthropic.com/ */
+#define ANTHROPIC_API_KEY   "sk-ant-your-key-here"
+
+/* API endpoint */
+#define ANTHROPIC_HOST      "api.anthropic.com"
+#define ANTHROPIC_PORT      443
+#define ANTHROPIC_PATH      "/v1/messages"
+#define ANTHROPIC_VERSION   "2023-06-01"
+
+/* Model to use */
+#define CLAUDE_MODEL        "claude-sonnet-4-20250514"
+
+/* Maximum tokens in Claude's response */
+#define CLAUDE_MAX_TOKENS   1024
+
+#endif /* CLAOS_CLAUDE_CONFIG_H */
