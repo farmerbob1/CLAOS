@@ -16,6 +16,12 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 
 > This is a meme project and educational toy — not a production OS. Built with Claude Code.
 
+### Boot Screen
+![CLAOS Boot Screen](Screenshots/Screenshot%202026-03-18%20161927.png)
+
+### Kernel Panic
+![CLAOS Kernel Panic](Screenshots/Screenshot%202026-03-18%20162359.png)
+
 ---
 
 ## Features
