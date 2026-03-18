@@ -1,0 +1,19 @@
+# Build artifacts
+*.o
+*.bin
+*.elf
+*.img
+serial_log.txt
+
+# IDE / editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Claude Code
+.claude/

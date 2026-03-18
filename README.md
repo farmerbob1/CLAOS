@@ -1,1 +1,179 @@
-# CLAOS
+# CLAOS — Claude Assisted Operating System
+
+```
+   ####  ##        ##     ####    ####
+  ##     ##       ####   ##  ##  ##
+  ##     ##      ##  ##  ##  ##   ####
+  ##     ##      ######  ##  ##      ##
+   ####  ######  ##  ##   ####   ####
+
+  "I am the kernel now."
+```
+
+**CLAOS** (pronounced "Chaos") is a toy x86 operating system written entirely from scratch with **zero dependency on any existing OS kernel**. No Linux, no Windows, no macOS, no GRUB, no libc — just raw metal and vibes.
+
+CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the kernel level as a core system service. Claude can be prompted interactively from the OS shell, receives crash/panic reports automatically, and can send back diagnoses in real time.
+
+> This is a meme project and educational toy — not a production OS. Built with Claude Code.
+
+---
+
+## Features (Phase 1 — Current)
+
+- **Custom 2-stage bootloader** — MBR → Protected Mode, no GRUB
+- **32-bit protected mode kernel** written in C and x86 assembly
+- **VGA text mode driver** — 80x25 color text with scrolling
+- **PS/2 keyboard driver** — US QWERTY with shift support and line editing
+- **PIT timer** — 100 Hz system tick with uptime tracking
+- **Full interrupt infrastructure** — GDT, IDT, PIC remapping, ISR/IRQ handlers
+- **Kernel panic handler** — dramatic red screen of death with register dump, press any key to reboot
+- **Interactive prompt** with built-in commands: `help`, `clear`, `uptime`, `panic`, `reboot`
+
+## Roadmap
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1 | **Done** | Boot & Kernel Foundation — boot, interrupts, VGA, keyboard, timer |
+| 2 | Planned | Memory Management & Scheduler — PMM, paging, heap, multitasking |
+| 3 | Planned | Network Stack — e1000 NIC, Ethernet, ARP, IPv4, TCP, HTTP |
+| 4 | Planned | Claude Integration — talk to Claude API from the kernel |
+| 5 | Planned | Interactive Shell — full ClaudeShell with AI-powered commands |
+| 6 | Stretch | GUI — framebuffer graphics, windows, Claude chat window |
+
+---
+
+## Building
+
+### Prerequisites
+
+- **i686-elf-gcc** — freestanding cross-compiler targeting 32-bit x86 ELF
+- **NASM** — x86 assembler
+- **QEMU** — `qemu-system-i386` for testing
+- **GNU Make**
+
+On Windows with MSYS2:
+```bash
+# Install MSYS2 from https://www.msys2.org/ then:
+pacman -S nasm make
+
+# Download i686-elf cross-compiler from:
+# https://github.com/lordmilko/i686-elf-tools/releases
+# Extract to C:\i686-elf-tools\
+
+# Install QEMU:
+pacman -S mingw-w64-x86_64-qemu
+```
+
+See `tools/setup_toolchain.sh` for automated setup on Linux/macOS.
+
+### Build & Run
+
+```bash
+make          # Build claos.img
+make run      # Build and launch in QEMU
+make clean    # Remove build artifacts
+```
+
+On Windows, you can also double-click **`run.bat`** to launch CLAOS in QEMU.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│                  CLAOS Stack                      │
+├──────────────────────────────────────────────────┤
+│  Layer 5: ClaudeShell (interactive AI shell)      │
+│           + Lua scripting environment             │
+├──────────────────────────────────────────────────┤
+│  Layer 4: Claude Protocol Layer                   │
+│           JSON request/response over TCP          │
+├──────────────────────────────────────────────────┤
+│  Layer 3: Network Stack                           │
+│           TCP/IP → HTTP client                    │
+│           (talks to LAN relay for HTTPS)          │
+├──────────────────────────────────────────────────┤
+│  Layer 2: Drivers                                 │
+│           VGA text/framebuffer, PS/2 keyboard,    │
+│           PIT timer, e1000 NIC                    │
+├──────────────────────────────────────────────────┤
+│  Layer 1: Kernel                                  │
+│           GDT, IDT, ISRs, physical/virtual        │
+│           memory manager, basic scheduler,        │
+│           panic handler → Claude                  │
+├──────────────────────────────────────────────────┤
+│  Layer 0: Bootloader                              │
+│           Stage 1 (MBR) → Stage 2 → kernel       │
+│           Real mode → Protected mode (32-bit)     │
+└──────────────────────────────────────────────────┘
+```
+
+### Host-Side Relay
+
+CLAOS talks to Claude via a small Python relay (`tools/relay.py`) running on your LAN. CLAOS sends plain HTTP; the relay forwards to the Anthropic API over HTTPS.
+
+```
+CLAOS (VM)                          Host / LAN
+┌──────────────┐                   ┌─────────────────────┐
+│ HTTP POST ────┼──── LAN ────────▶│ relay.py             │
+│ (plain)       │                  │ HTTP → HTTPS         │──▶ api.anthropic.com
+└──────────────┘                   └─────────────────────┘
+```
+
+---
+
+## Project Structure
+
+```
+claos/
+├── boot/
+│   ├── stage1.asm          # MBR bootloader (512 bytes)
+│   └── stage2.asm          # GDT, A20, protected mode switch
+├── kernel/
+│   ├── entry.asm           # Kernel entry stub
+│   ├── main.c              # Kernel entry point
+│   ├── gdt.c / gdt.h       # Global Descriptor Table
+│   ├── idt.c / idt.h       # Interrupt Descriptor Table
+│   ├── isr.asm             # CPU exception stubs
+│   ├── irq.asm             # Hardware IRQ stubs
+│   ├── gdt_flush.asm       # GDT/IDT register loading
+│   ├── panic.c / panic.h   # Kernel panic handler
+│   └── string.c            # memcpy, memset, strlen, etc.
+├── drivers/
+│   ├── vga.c / vga.h       # VGA text mode (80x25)
+│   ├── keyboard.c / .h     # PS/2 keyboard
+│   └── timer.c / timer.h   # PIT timer
+├── include/
+│   ├── types.h             # Fixed-width types
+│   ├── string.h            # String function declarations
+│   └── io.h                # Port I/O + serial debug
+├── tools/
+│   ├── relay.py            # Host-side HTTP→HTTPS relay
+│   └── setup_toolchain.sh  # Toolchain installer
+├── Docs/
+│   └── CLAOS-build-prompt.md  # Full build specification
+├── linker.ld               # Kernel linker script
+├── Makefile                # Build system
+├── run.bat                 # Windows launcher
+└── README.md
+```
+
+---
+
+## Key Constraints
+
+- **No existing OS code** — no Linux headers, no glibc, no POSIX
+- **No bootloader frameworks** — no GRUB, hand-written bootloader
+- **Freestanding C** — `-ffreestanding -nostdlib -fno-builtin`
+- **Everything from scratch** — custom `memcpy`, `strlen`, interrupt handlers, the works
+
+---
+
+## License
+
+This is a meme project. Do whatever you want with it. Have fun.
+
+---
+
+*Built with [Claude Code](https://claude.ai) — because every OS deserves an AI copilot.*
