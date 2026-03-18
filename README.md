@@ -125,15 +125,17 @@ On Windows, you can also double-click **`run.bat`** to launch CLAOS in QEMU.
 ┌──────────────────────────────────────────────────┐
 │                  CLAOS Stack                      │
 ├──────────────────────────────────────────────────┤
-│  Layer 5: ClaudeShell (interactive AI shell)      │
-│           + Lua scripting environment             │
+│  Layer 6: ClaudeShell (interactive AI shell)      │
 ├──────────────────────────────────────────────────┤
-│  Layer 4: Claude Protocol Layer                   │
-│           JSON request/response over TCP          │
+│  Layer 5: Claude Protocol Layer                   │
+│           JSON request/response over HTTPS        │
+├──────────────────────────────────────────────────┤
+│  Layer 4: HTTPS Client                            │
+│           HTTP/1.1 + TLS 1.2 (via BearSSL port)  │
 ├──────────────────────────────────────────────────┤
 │  Layer 3: Network Stack                           │
-│           TCP/IP → HTTP client                    │
-│           (talks to LAN relay for HTTPS)          │
+│           e1000 NIC → Ethernet → ARP → IPv4 →    │
+│           DNS (UDP) → TCP                         │
 ├──────────────────────────────────────────────────┤
 │  Layer 2: Drivers                                 │
 │           VGA text/framebuffer, PS/2 keyboard,    │
@@ -150,16 +152,21 @@ On Windows, you can also double-click **`run.bat`** to launch CLAOS in QEMU.
 └──────────────────────────────────────────────────┘
 ```
 
-### Host-Side Relay
+### No Relay — Fully Self-Contained
 
-CLAOS talks to Claude via a small Python relay (`tools/relay.py`) running on your LAN. CLAOS sends plain HTTP; the relay forwards to the Anthropic API over HTTPS.
+CLAOS talks directly to `api.anthropic.com` over native HTTPS. No relay scripts, no host-side helpers. The full path is:
 
 ```
-CLAOS (VM)                          Host / LAN
-┌──────────────┐                   ┌─────────────────────┐
-│ HTTP POST ────┼──── LAN ────────▶│ relay.py             │
-│ (plain)       │                  │ HTTP → HTTPS         │──▶ api.anthropic.com
-└──────────────┘                   └─────────────────────┘
+CLAOS (bare metal / QEMU VM)
+┌─────────────────────────────────────────┐
+│ Claude Protocol Layer                    │
+│   ↓ JSON body                           │
+│ HTTPS Client (HTTP/1.1 over TLS 1.2)    │
+│   ↓ encrypted via BearSSL              │
+│ TCP → IPv4 → Ethernet → e1000 NIC      │
+└────────────────┬────────────────────────┘
+                 ↓ (internet)
+          api.anthropic.com
 ```
 
 ---
@@ -185,6 +192,7 @@ claos/
 │   ├── heap.c / heap.h     # Kernel heap (kmalloc/kfree)
 │   ├── scheduler.c / .h    # Preemptive round-robin scheduler
 │   ├── scheduler_asm.asm   # Context switch routine
+│   ├── entropy.c / .h      # Entropy pool for TLS randomness
 │   └── string.c            # memcpy, memset, strlen, etc.
 ├── drivers/
 │   ├── vga.c / vga.h       # VGA text mode (80x25)
@@ -219,10 +227,9 @@ claos/
 │   ├── string.h            # String function declarations
 │   └── io.h                # Port I/O + serial debug
 ├── tools/
-│   ├── relay.py            # Host-side HTTP→HTTPS relay
 │   └── setup_toolchain.sh  # Toolchain installer
 ├── Docs/
-│   └── CLAOS-build-prompt.md  # Full build specification
+│   └── CLAOS-build-prompt-v2.md  # Full build specification
 ├── linker.ld               # Kernel linker script
 ├── Makefile                # Build system
 ├── run.bat                 # Windows launcher
