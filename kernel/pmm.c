@@ -34,16 +34,19 @@ static uint32_t used_pages = 0;         /* Currently allocated pages */
 
 /* Set a page as used in the bitmap */
 static void pmm_set_page(uint32_t page) {
+    if (page >= MAX_PAGES) return;
     bitmap[page / 8] |= (1 << (page % 8));
 }
 
 /* Set a page as free in the bitmap */
 static void pmm_clear_page(uint32_t page) {
+    if (page >= MAX_PAGES) return;
     bitmap[page / 8] &= ~(1 << (page % 8));
 }
 
 /* Check if a page is used */
 static bool pmm_test_page(uint32_t page) {
+    if (page >= MAX_PAGES) return true;  /* Out of range = treat as used */
     return bitmap[page / 8] & (1 << (page % 8));
 }
 
@@ -134,6 +137,15 @@ void pmm_free_page(uint32_t phys_addr) {
         pmm_clear_page(page);
         used_pages--;
     }
+}
+
+bool pmm_reserve_page(uint32_t phys_addr) {
+    uint32_t page = phys_addr / PAGE_SIZE;
+    if (page >= MAX_PAGES) return false;
+    if (pmm_test_page(page)) return false;  /* Already reserved */
+    pmm_set_page(page);
+    used_pages++;
+    return true;
 }
 
 uint32_t pmm_get_total_memory(void) {

@@ -31,6 +31,7 @@
  * We implement realloc as: kmalloc new block, copy, kfree old.
  * Not efficient, but correct and simple for a toy OS.
  */
+
 void* realloc(void* ptr, size_t new_size) {
     if (new_size == 0) {
         kfree(ptr);
@@ -41,14 +42,15 @@ void* realloc(void* ptr, size_t new_size) {
         return kmalloc(new_size);
     }
 
-    /* Allocate new block, copy old data, free old block.
-     * We don't know the old size precisely, so copy new_size bytes.
-     * This is safe because we're always growing or the caller handles it. */
+    /* Get the actual usable size of the old block from the heap header,
+     * so we only copy what was actually allocated (not beyond). */
+    extern size_t kmalloc_usable_size(void* ptr);
+    size_t old_size = kmalloc_usable_size(ptr);
+    size_t copy_size = old_size < new_size ? old_size : new_size;
+
     void* new_ptr = kmalloc(new_size);
     if (new_ptr) {
-        /* Copy up to new_size bytes — if shrinking, this is fine.
-         * If growing, the extra bytes are uninitialized (Lua handles this). */
-        memcpy(new_ptr, ptr, new_size);
+        memcpy(new_ptr, ptr, copy_size);
         kfree(ptr);
     }
     return new_ptr;

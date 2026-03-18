@@ -28,6 +28,7 @@ struct block_header {
 /* Head of the block list */
 static struct block_header* heap_start = NULL;
 static uint32_t heap_total_size = 0;
+static uint32_t heap_base_addr = 0;  /* Start address for bounds checking */
 
 void heap_init(uint32_t start, uint32_t size) {
     /* Align start to 16 bytes */
@@ -43,6 +44,7 @@ void heap_init(uint32_t start, uint32_t size) {
     heap_start->is_free = true;
     heap_start->next = NULL;
     heap_total_size = size;
+    heap_base_addr = start;
 
     serial_print("[HEAP] Initialized\n");
 }
@@ -84,21 +86,37 @@ void* kmalloc(size_t size) {
 }
 
 void* kmalloc_aligned(size_t size, size_t align) {
-    /* Over-allocate to guarantee alignment */
-    void* ptr = kmalloc(size + align);
-    if (!ptr) return NULL;
+    /* Over-allocate: we need room for the alignment padding plus a pointer
+     * to store the original (unaligned) address so kfree can find it. */
+    void* raw = kmalloc(size + align + sizeof(void*));
+    if (!raw) return NULL;
 
-    /* Align the returned pointer */
-    uint32_t addr = (uint32_t)ptr;
+    /* Reserve space for the hidden pointer, then align */
+    uint32_t addr = (uint32_t)raw + sizeof(void*);
     uint32_t aligned = (addr + align - 1) & ~(align - 1);
 
-    /* Note: This wastes some memory and makes kfree unreliable for
-     * aligned allocations. Good enough for a toy OS. */
+    /* Store the original pointer just before the aligned address */
+    ((void**)aligned)[-1] = raw;
+
     return (void*)aligned;
+}
+
+void kfree_aligned(void* ptr) {
+    if (!ptr) return;
+    /* Retrieve the original pointer stored just before the aligned address */
+    void* raw = ((void**)ptr)[-1];
+    kfree(raw);
 }
 
 void kfree(void* ptr) {
     if (!ptr) return;
+
+    /* Validate that ptr is within heap bounds */
+    uint32_t addr = (uint32_t)ptr;
+    if (addr < heap_base_addr + HEADER_SIZE || addr >= heap_base_addr + heap_total_size) {
+        serial_print("[HEAP] kfree: pointer outside heap bounds!\n");
+        return;
+    }
 
     /* The header is right before the data pointer */
     struct block_header* block =
@@ -120,6 +138,13 @@ void kfree(void* ptr) {
         prev->size += HEADER_SIZE + block->size;
         prev->next = block->next;
     }
+}
+
+size_t kmalloc_usable_size(void* ptr) {
+    if (!ptr) return 0;
+    struct block_header* block =
+        (struct block_header*)((uint8_t*)ptr - HEADER_SIZE);
+    return block->size;
 }
 
 uint32_t heap_get_used(void) {

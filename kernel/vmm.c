@@ -34,7 +34,17 @@ void vmm_init(void) {
     for (int t = 0; t < 4; t++) {
         for (int p = 0; p < 1024; p++) {
             uint32_t phys = (t * 1024 + p) * PAGE_SIZE;
-            page_tables[t][p] = phys | PTE_PRESENT | PTE_WRITABLE;
+            uint32_t flags = PTE_PRESENT | PTE_WRITABLE;
+
+            /* VGA/MMIO region (0xA0000-0xBFFFF): disable caching.
+             * This covers the VGA graphics buffer, monochrome buffer,
+             * and VGA text buffer at 0xB8000. Without these flags,
+             * CPU cache can buffer writes and the display won't update. */
+            if (phys >= 0xA0000 && phys < 0xC0000) {
+                flags |= PTE_WRITETHROUGH | PTE_NOCACHE;
+            }
+
+            page_tables[t][p] = phys | flags;
         }
         page_directory[t] = (uint32_t)&page_tables[t] | PTE_PRESENT | PTE_WRITABLE;
     }
@@ -76,8 +86,16 @@ void vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags) {
         uint32_t pt_phys = pmm_alloc_page();
         if (!pt_phys) return;   /* Out of memory */
 
+        /* Safe because we identity-map. pt_phys < 128MB which is identity-mapped. */
         memset((void*)pt_phys, 0, PAGE_SIZE);
-        page_directory[pd_index] = pt_phys | PTE_PRESENT | PTE_WRITABLE | flags;
+        /* Page directory entry gets PRESENT + WRITABLE only; the per-page
+         * flags (NOCACHE, WRITETHROUGH, etc.) go on the page table entries. */
+        page_directory[pd_index] = pt_phys | PTE_PRESENT | PTE_WRITABLE;
+    } else if (page_directory[pd_index] & PTE_4MB) {
+        /* This slot holds a 4MB page — we can't add a 4KB mapping into it
+         * without splitting it first. For now, just return. */
+        serial_print("[VMM] vmm_map_page: can't remap 4MB page\n");
+        return;
     }
 
     /* Get the page table and map the page */

@@ -47,4 +47,7 @@ uint32_t pmm_get_free_pages(void);
 /* Get number of used pages */
 uint32_t pmm_get_used_pages(void);
 
+/* Reserve a specific physical page (mark as used). Returns true if it was free. */
+bool pmm_reserve_page(uint32_t phys_addr);
+
 #endif /* CLAOS_PMM_H */

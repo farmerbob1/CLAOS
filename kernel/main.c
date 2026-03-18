@@ -229,9 +229,15 @@ void kernel_main(void) {
 
     /* Step 9: Kernel heap — place it after the kernel in physical memory.
      * We give it 1MB of space, starting at the page after _kernel_end. */
-    uint32_t heap_start_addr = ((uint32_t)&_kernel_end + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+    uint32_t heap_start_addr = ((uint32_t)&_kernel_end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     uint32_t heap_size = 1024 * 1024;   /* 1MB heap */
     heap_init(heap_start_addr, heap_size);
+
+    /* Reserve heap pages in the PMM so pmm_alloc_page() never returns
+     * a page that the heap is using — this prevents silent corruption. */
+    for (uint32_t addr = heap_start_addr; addr < heap_start_addr + heap_size; addr += PAGE_SIZE) {
+        pmm_reserve_page(addr);
+    }
     boot_msg("Kernel heap (1MB)", "OK");
     serial_print("[CLAOS] Heap OK\n");
 
