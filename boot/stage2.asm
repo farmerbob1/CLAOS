@@ -2,16 +2,18 @@
 ; CLAOS — Claude Assisted Operating System
 ; stage2.asm — Stage 2 Bootloader
 ;
-; Simple approach: Load kernel to low memory (0x10000-0x90000 = 512KB)
+; Simple approach: Load kernel to low memory (0x8000-0x9FFFF = 608KB)
 ; in real mode, then copy it to 0x100000 after entering protected mode.
+; Stage2 code is at 0x7E00 and finishes well before 0x8000, so the kernel
+; can safely be loaded starting at 0x8000.
 ;
 
 [BITS 16]
 [ORG 0x7E00]
 
 KERNEL_PHYS     equ 0x100000    ; Final kernel location
-LOAD_BASE       equ 0x10000     ; Temp load area (64KB-576KB)
-LOAD_SEG_START  equ 0x1000      ; Segment for 0x10000
+LOAD_BASE       equ 0x8000      ; Temp load area (0x8000 - 0x9FFFF = 608KB)
+LOAD_SEG_START  equ 0x0800      ; Segment for 0x8000
 
 stage2_start:
     mov si, msg_stage2
@@ -98,7 +100,7 @@ dap:            times 16 db 0
 ; ──────────────────────────────────────────────────────────────
 detect_memory:
     pusha
-    mov di, 0x8004
+    mov di, 0x704               ; E820 entries start at 0x704
     xor ebx, ebx
     xor si, si
 .e820_loop:
@@ -114,7 +116,7 @@ detect_memory:
     test ebx, ebx
     jnz .e820_loop
 .e820_done:
-    mov [0x8000], si
+    mov [0x700], si             ; E820 entry count at 0x700
     popa
     ret
 
@@ -202,12 +204,11 @@ pm_entry:
     mov ss, ax
     mov esp, 0x90000
 
-    ; Copy kernel from 0x10000 to 0x100000
-    ; We loaded up to 512KB (0x80000 bytes). Just copy the max —
-    ; copying extra zeros is harmless and avoids variable address issues.
+    ; Copy kernel from LOAD_BASE (0x8000) to 0x100000
+    ; We loaded up to 608KB. Copy the max — extra zeros are harmless.
     mov esi, LOAD_BASE              ; Source: where we loaded in real mode
     mov edi, KERNEL_PHYS            ; Destination: 1MB
-    mov ecx, 0x90000                ; Copy 576KB (enough for kernel + BearSSL + Lua)
+    mov ecx, 0x98000                ; Copy 608KB (enough for kernel + 3D engine)
     rep movsb                       ; Copy!
 
     ; Jump to the kernel at 1MB
@@ -219,28 +220,28 @@ pm_entry:
 
 ; ──────────────────────────────────────────────────────────────
 ; VBE Probe Subroutine — detect-only, does NOT switch video mode.
-; Stores VBE capabilities at 0x9000 for the kernel to use later
+; Stores VBE capabilities at 0x2000 for the kernel to use later
 ; when the GUI is launched. Boot stays in text mode.
 ;
-; Memory layout at 0x9000:
-;   0x9000 (1B): 0 = no VBE, 1 = VBE mode found (not yet active)
-;   0x9002 (2B): VBE mode number (with 0x4000 linear FB bit)
-;   0x9004 (4B): framebuffer physical address
-;   0x9008 (2B): X resolution
-;   0x900A (2B): Y resolution
-;   0x900C (2B): pitch (bytes per scanline)
-;   0x900E (1B): bits per pixel
+; Memory layout at 0x2000 (BIOS-free zone):
+;   0x2000 (1B): 0 = no VBE, 1 = VBE mode found (not yet active)
+;   0x2002 (2B): VBE mode number (with 0x4000 linear FB bit)
+;   0x2004 (4B): framebuffer physical address
+;   0x2008 (2B): X resolution
+;   0x200A (2B): Y resolution
+;   0x200C (2B): pitch (bytes per scanline)
+;   0x200E (1B): bits per pixel
 [BITS 16]
 detect_vbe:
     pusha
-    mov byte [0x9000], 0
+    mov byte [0x2000], 0
 
     ; Get VBE Controller Info
     push es
     xor ax, ax
     mov es, ax
     mov ax, 0x4F00
-    mov di, 0x9010
+    mov di, 0x2010
     mov dword [es:di], 'VBE2'
     int 0x10
     pop es
@@ -253,19 +254,19 @@ detect_vbe:
     mov es, ax
     mov ax, 0x4F01
     mov cx, 0x118
-    mov di, 0x9200
+    mov di, 0x2200
     int 0x10
     pop es
     cmp ax, 0x004F
     jne .vtry2
-    cmp byte [0x9200 + 25], 32
+    cmp byte [0x2200 + 25], 32
     je .vfound_118
-    cmp byte [0x9200 + 25], 24
+    cmp byte [0x2200 + 25], 24
     je .vfound_118
     jmp .vtry2
 
 .vfound_118:
-    mov word [0x9002], 0x4118
+    mov word [0x2002], 0x4118
     jmp .vstore
 
 .vtry2:
@@ -275,33 +276,33 @@ detect_vbe:
     mov es, ax
     mov ax, 0x4F01
     mov cx, 0x115
-    mov di, 0x9200
+    mov di, 0x2200
     int 0x10
     pop es
     cmp ax, 0x004F
     jne .vdone
-    cmp byte [0x9200 + 25], 32
+    cmp byte [0x2200 + 25], 32
     je .vfound_115
-    cmp byte [0x9200 + 25], 24
+    cmp byte [0x2200 + 25], 24
     je .vfound_115
     jmp .vdone
 
 .vfound_115:
-    mov word [0x9002], 0x4115
+    mov word [0x2002], 0x4115
 
 .vstore:
     ; Store mode info for kernel (but do NOT set the mode)
-    mov byte [0x9000], 1
-    mov eax, [0x9200 + 40]
-    mov [0x9004], eax
-    mov ax, [0x9200 + 18]
-    mov [0x9008], ax
-    mov ax, [0x9200 + 20]
-    mov [0x900A], ax
-    mov ax, [0x9200 + 16]
-    mov [0x900C], ax
-    mov al, [0x9200 + 25]
-    mov [0x900E], al
+    mov byte [0x2000], 1
+    mov eax, [0x2200 + 40]
+    mov [0x2004], eax
+    mov ax, [0x2200 + 18]
+    mov [0x2008], ax
+    mov ax, [0x2200 + 20]
+    mov [0x200A], ax
+    mov ax, [0x2200 + 16]
+    mov [0x200C], ax
+    mov al, [0x2200 + 25]
+    mov [0x200E], al
 
 .vdone:
     popa

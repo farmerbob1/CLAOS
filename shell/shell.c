@@ -596,7 +596,7 @@ void shell_run(void) {
             cmd_claude(line + 7);
         } else if (strcmp(line, "gui") == 0) {
             /* Launch GUI — activate VESA and run /system/gui/init.lua */
-            if (*(volatile uint8_t*)0x9000 != 1) {
+            if (*(volatile uint8_t*)0x2000 != 1) {
                 vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
                 vga_print("  No VBE graphics available.\n");
             } else {

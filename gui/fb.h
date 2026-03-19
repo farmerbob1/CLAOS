@@ -23,14 +23,14 @@ typedef struct {
     bool      active;           /* True if VESA mode is active */
 } fb_info_t;
 
-/* VBE info addresses (set by stage2 bootloader at 0x9000) */
-#define VBE_INFO_ADDR       0x9000
-#define VBE_STATUS_ADDR     0x9000
-#define VBE_FB_ADDR         0x9004
-#define VBE_WIDTH_ADDR      0x9008
-#define VBE_HEIGHT_ADDR     0x900A
-#define VBE_PITCH_ADDR      0x900C
-#define VBE_BPP_ADDR        0x900E
+/* VBE info addresses (set by stage2 bootloader at 0x2000) */
+#define VBE_INFO_ADDR       0x2000
+#define VBE_STATUS_ADDR     0x2000
+#define VBE_FB_ADDR         0x2004
+#define VBE_WIDTH_ADDR      0x2008
+#define VBE_HEIGHT_ADDR     0x200A
+#define VBE_PITCH_ADDR      0x200C
+#define VBE_BPP_ADDR        0x200E
 
 /* Probe VBE info from stage2 data (does NOT switch video mode).
  * Returns true if VBE mode is available. */
@@ -100,6 +100,9 @@ int fb_text_bold(int x, int y, const char* str, uint32_t fg, uint32_t bg);
 
 /* Draw 2x scaled text (each pixel doubled — 16x32 per char) */
 int fb_text_2x(int x, int y, const char* str, uint32_t fg, uint32_t bg);
+
+/* Get raw backbuffer pointer (for 3D engine direct rendering) */
+uint32_t* fb_get_backbuffer(void);
 
 /* Color helpers — ARGB format (alpha in high byte) */
 #define FB_RGB(r, g, b)       ((uint32_t)(0xFF000000 | ((r) << 16) | ((g) << 8) | (b)))

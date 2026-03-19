@@ -17,6 +17,7 @@
 #define EVENT_MOUSE_MOVE  2
 #define EVENT_MOUSE_DOWN  3
 #define EVENT_MOUSE_UP    4
+#define EVENT_KEY_UP      5
 
 /* Input event structure */
 typedef struct {

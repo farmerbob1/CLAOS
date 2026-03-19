@@ -129,6 +129,21 @@ local function icon_monitor(x, y, sz, fg)
     g.vline(bx+12, by-14, 14, g.rgb(80,160,240))
 end
 
+local function icon_3d(x, y, sz, fg)
+    -- 3D cube icon
+    local cx, cy = x + math.floor(sz/2), y + math.floor(sz/2)
+    local s = math.floor(sz * 0.35)
+    -- Front face
+    g.rect_outline(cx - s, cy - s + 2, s + s - 4, s + s - 4, fg)
+    -- Top face (parallelogram)
+    g.line(cx - s, cy - s + 2, cx - s + 6, cy - s - 4, fg)
+    g.line(cx + s - 4, cy - s + 2, cx + s + 2, cy - s - 4, fg)
+    g.hline(cx - s + 6, cy - s - 4, s + s - 4, fg)
+    -- Right face
+    g.line(cx + s - 4, cy + s - 2, cx + s + 2, cy + s - 8, fg)
+    g.vline(cx + s + 2, cy - s - 4, s + s - 4, fg)
+end
+
 local function icon_folder(x, y, sz, fg)
     -- Folder tab
     g.rounded_rect(x+3, y+4, math.floor(sz*0.4), math.floor(sz*0.3), 2, fg)
@@ -199,6 +214,7 @@ register_app("/system/gui/apps/term.lua")
 register_app("/system/gui/apps/monitor.lua")
 register_app("/system/gui/apps/files.lua")
 register_app("/system/gui/apps/notepad.lua")
+register_app("/system/gui/apps/doom.lua")
 
 -- ═══════════════════════════════════════
 -- Window Manager
@@ -460,6 +476,7 @@ local dock_icon_fn = {
     term = icon_terminal,
     monitor = icon_monitor,
     files = icon_folder,
+    ["3d"] = icon_3d,
 }
 
 local function draw_dock()

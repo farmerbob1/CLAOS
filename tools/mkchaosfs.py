@@ -129,10 +129,26 @@ def cmd_format(image_path):
     print(f"  Data starts at sector {data_start}")
 
 
+def cmd_delete(image_path, path):
+    """Delete a file by marking its entry as deleted."""
+    with open(image_path, 'r+b') as f:
+        sb = read_superblock(f)
+        entries = read_entries(f, sb['max_files'])
+        for i, e in enumerate(entries):
+            if e['filename'] == path and not (e['flags'] & FLAG_DELETED):
+                e['flags'] |= FLAG_DELETED
+                write_entry(f, i, e)
+                return True
+    return False
+
+
 def cmd_add(image_path, path, data):
-    """Add a file with inline data."""
+    """Add a file with inline data. Overwrites if file already exists."""
     if isinstance(data, str):
         data = data.encode('utf-8')
+
+    # Delete existing file first (if any) so we overwrite cleanly
+    cmd_delete(image_path, path)
 
     with open(image_path, 'r+b') as f:
         sb = read_superblock(f)
@@ -142,7 +158,7 @@ def cmd_add(image_path, path, data):
 
         entries = read_entries(f, sb['max_files'])
 
-        # Find free entry
+        # Find free entry (deleted entries can be reused)
         idx = None
         for i, e in enumerate(entries):
             if not e['filename'] or (e['flags'] & FLAG_DELETED):

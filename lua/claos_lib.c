@@ -31,6 +31,8 @@
 #include "mouse.h"
 #include "console.h"
 #include "ac97.h"
+#include "mouse.h"
+#include "gui3d_lua.h"
 
 /* Global Lua state */
 static lua_State* global_L = NULL;
@@ -245,6 +247,31 @@ static int l_audio_status(lua_State* L) {
     return 1;
 }
 
+/* ─── Game Input Bindings ─── */
+
+/* claos.key_pressed(scancode) → bool */
+static int l_key_pressed(lua_State* L) {
+    int sc = (int)luaL_checkinteger(L, 1);
+    lua_pushboolean(L, keyboard_is_pressed((uint8_t)sc));
+    return 1;
+}
+
+/* claos.mouse_delta() → dx, dy */
+static int l_mouse_delta(lua_State* L) {
+    int dx, dy;
+    mouse_get_delta(&dx, &dy);
+    lua_pushinteger(L, dx);
+    lua_pushinteger(L, dy);
+    return 2;
+}
+
+/* claos.mouse_raw(enable) */
+static int l_mouse_raw(lua_State* L) {
+    bool enable = lua_toboolean(L, 1);
+    mouse_set_raw_mode(enable);
+    return 0;
+}
+
 static const luaL_Reg audio_funcs[] = {
     {"beep",      l_audio_beep},
     {"play_tone", l_audio_beep},   /* alias */
@@ -269,9 +296,12 @@ static const luaL_Reg claos_funcs[] = {
     {"clear",     l_clear},
     {"input",     l_input},
     {"disk",      l_disk},
-    {"cpu",       l_cpu},
-    {"reboot",    l_reboot},
-    {"shutdown",  l_shutdown},
+    {"cpu",          l_cpu},
+    {"reboot",       l_reboot},
+    {"shutdown",     l_shutdown},
+    {"key_pressed",  l_key_pressed},
+    {"mouse_delta",  l_mouse_delta},
+    {"mouse_raw",    l_mouse_raw},
     {NULL, NULL}
 };
 
@@ -363,6 +393,21 @@ void claos_lua_register(lua_State* L) {
     lua_pushinteger(L, EVENT_MOUSE_MOVE); lua_setfield(L,-2,"MOUSE_MOVE");
     lua_pushinteger(L, EVENT_MOUSE_DOWN); lua_setfield(L,-2,"MOUSE_DOWN");
     lua_pushinteger(L, EVENT_MOUSE_UP);   lua_setfield(L,-2,"MOUSE_UP");
+    lua_pushinteger(L, EVENT_KEY_UP);     lua_setfield(L,-2,"KEY_UP");
+    /* Scancode constants for game input polling */
+    lua_pushinteger(L, SC_W);      lua_setfield(L,-2,"SC_W");
+    lua_pushinteger(L, SC_A);      lua_setfield(L,-2,"SC_A");
+    lua_pushinteger(L, SC_S);      lua_setfield(L,-2,"SC_S");
+    lua_pushinteger(L, SC_D);      lua_setfield(L,-2,"SC_D");
+    lua_pushinteger(L, SC_Q);      lua_setfield(L,-2,"SC_Q");
+    lua_pushinteger(L, SC_E);      lua_setfield(L,-2,"SC_E");
+    lua_pushinteger(L, SC_SPACE);  lua_setfield(L,-2,"SC_SPACE");
+    lua_pushinteger(L, SC_ESC);    lua_setfield(L,-2,"SC_ESC");
+    lua_pushinteger(L, SC_LSHIFT); lua_setfield(L,-2,"SC_LSHIFT");
+    lua_pushinteger(L, SC_UP);     lua_setfield(L,-2,"SC_UP");
+    lua_pushinteger(L, SC_DOWN);   lua_setfield(L,-2,"SC_DOWN");
+    lua_pushinteger(L, SC_LEFT);   lua_setfield(L,-2,"SC_LEFT");
+    lua_pushinteger(L, SC_RIGHT);  lua_setfield(L,-2,"SC_RIGHT");
     /* Special key constants */
     lua_pushinteger(L, KEY_ARROW_UP);    lua_setfield(L,-2,"K_UP");
     lua_pushinteger(L, KEY_ARROW_DOWN);  lua_setfield(L,-2,"K_DOWN");
@@ -381,6 +426,10 @@ void claos_lua_register(lua_State* L) {
     luaL_newlibtable(L, audio_funcs);
     luaL_setfuncs(L, audio_funcs, 0);
     lua_setfield(L, -2, "audio");
+
+    /* Create claos.gui3d subtable (3D engine) */
+    gui3d_lua_open(L);
+    lua_setfield(L, -2, "gui3d");
 
     lua_setglobal(L, "claos");
     serial_print("[LUA] claos global set\n");

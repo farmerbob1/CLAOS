@@ -1,0 +1,80 @@
+{
+    "comment": "CLAOS demo map: cross-shaped room with 5 sectors",
+
+    "vertices": [
+        [-128, -128],
+        [ 128, -128],
+        [ 128,  128],
+        [-128,  128],
+
+        [-128, -384],
+        [ 128, -384],
+
+        [ 384, -128],
+        [ 384,  128],
+
+        [-128,  384],
+        [ 128,  384],
+
+        [-384, -128],
+        [-384,  128],
+
+        [-128, -512],
+        [ 128, -512],
+
+        [ 512, -128],
+        [ 512,  128],
+
+        [-128,  512],
+        [ 128,  512],
+
+        [-512, -128],
+        [-512,  128]
+    ],
+
+    "sectors": [
+        {"floor": 0, "ceiling": 128, "light": 220, "floor_tex": 3, "ceil_tex": 4},
+        {"floor": 0, "ceiling": 128, "light": 200, "floor_tex": 3, "ceil_tex": 4},
+        {"floor": 0, "ceiling": 128, "light": 200, "floor_tex": 3, "ceil_tex": 4},
+        {"floor": 0, "ceiling": 128, "light": 180, "floor_tex": 3, "ceil_tex": 4},
+        {"floor": 0, "ceiling": 128, "light": 180, "floor_tex": 3, "ceil_tex": 4}
+    ],
+
+    "linedefs": [
+        {"v1": 4,  "v2": 5,  "front": 1, "back": -1, "mid_tex": 1},
+        {"v1": 5,  "v2": 1,  "front": 1, "back": -1, "mid_tex": 1},
+        {"v1": 0,  "v2": 4,  "front": 1, "back": -1, "mid_tex": 1},
+        {"v1": 0,  "v2": 1,  "front": 1, "back": 0,  "upper_tex": 1, "lower_tex": 1},
+
+        {"v1": 12, "v2": 13, "front": 1, "back": -1, "mid_tex": 1},
+        {"v1": 13, "v2": 5,  "front": 1, "back": -1, "mid_tex": 1},
+        {"v1": 4,  "v2": 12, "front": 1, "back": -1, "mid_tex": 1},
+
+        {"v1": 1,  "v2": 6,  "front": 2, "back": -1, "mid_tex": 1},
+        {"v1": 6,  "v2": 7,  "front": 2, "back": -1, "mid_tex": 1},
+        {"v1": 7,  "v2": 2,  "front": 2, "back": -1, "mid_tex": 1},
+        {"v1": 1,  "v2": 2,  "front": 2, "back": 0,  "upper_tex": 1, "lower_tex": 1},
+
+        {"v1": 6,  "v2": 14, "front": 2, "back": -1, "mid_tex": 1},
+        {"v1": 14, "v2": 15, "front": 2, "back": -1, "mid_tex": 1},
+        {"v1": 15, "v2": 7,  "front": 2, "back": -1, "mid_tex": 1},
+
+        {"v1": 2,  "v2": 9,  "front": 3, "back": -1, "mid_tex": 1},
+        {"v1": 9,  "v2": 8,  "front": 3, "back": -1, "mid_tex": 1},
+        {"v1": 8,  "v2": 3,  "front": 3, "back": -1, "mid_tex": 1},
+        {"v1": 2,  "v2": 3,  "front": 3, "back": 0,  "upper_tex": 1, "lower_tex": 1},
+
+        {"v1": 9,  "v2": 17, "front": 3, "back": -1, "mid_tex": 1},
+        {"v1": 17, "v2": 16, "front": 3, "back": -1, "mid_tex": 1},
+        {"v1": 16, "v2": 8,  "front": 3, "back": -1, "mid_tex": 1},
+
+        {"v1": 0,  "v2": 10, "front": 4, "back": -1, "mid_tex": 1},
+        {"v1": 10, "v2": 11, "front": 4, "back": -1, "mid_tex": 1},
+        {"v1": 11, "v2": 3,  "front": 4, "back": -1, "mid_tex": 1},
+        {"v1": 3,  "v2": 0,  "front": 4, "back": 0,  "upper_tex": 1, "lower_tex": 1},
+
+        {"v1": 10, "v2": 18, "front": 4, "back": -1, "mid_tex": 1},
+        {"v1": 18, "v2": 19, "front": 4, "back": -1, "mid_tex": 1},
+        {"v1": 19, "v2": 11, "front": 4, "back": -1, "mid_tex": 1}
+    ]
+}

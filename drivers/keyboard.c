@@ -53,6 +53,10 @@ static volatile int kb_tail = 0;     /* Read position */
 static volatile bool shift_held = false;
 static volatile bool ctrl_held = false;
 
+/* Key state array — true if key is currently held down (indexed by scancode) */
+#define KEY_STATE_SIZE 128
+static volatile bool key_state[KEY_STATE_SIZE];
+
 /* Map scancodes to special key codes (arrow keys, Home, End, etc.) */
 static uint16_t scancode_to_special(uint8_t scancode) {
     switch (scancode) {
@@ -76,14 +80,38 @@ void keyboard_handler(void) {
     /* Key release events have bit 7 set */
     if (scancode & 0x80) {
         uint8_t released = scancode & 0x7F;
-        /* Left shift = 0x2A, Right shift = 0x36 */
+
+        /* Update key state array */
+        if (released < KEY_STATE_SIZE)
+            key_state[released] = false;
+
+        /* Track modifier state */
         if (released == 0x2A || released == 0x36)
             shift_held = false;
-        /* Left Ctrl = 0x1D */
         if (released == 0x1D)
             ctrl_held = false;
+
+        /* Push KEY_UP event to GUI queue (games need this) */
+        if (input_is_gui_mode()) {
+            uint16_t special = scancode_to_special(released);
+            uint16_t key;
+            if (special) {
+                key = special;
+            } else {
+                char c = scancode_ascii[released];
+                key = c ? (uint16_t)(uint8_t)c : 0;
+            }
+            if (key) {
+                input_event_t ev = { EVENT_KEY_UP, key, 0, 0, 0 };
+                input_push(&ev);
+            }
+        }
         return;
     }
+
+    /* Update key state array */
+    if (scancode < KEY_STATE_SIZE)
+        key_state[scancode] = true;
 
     /* Track modifier state */
     if (scancode == 0x2A || scancode == 0x36) {
@@ -121,10 +149,6 @@ void keyboard_handler(void) {
             /* GUI mode: push to event queue for Lua */
             uint16_t key = (uint16_t)(uint8_t)c;
             if (ctrl_held)  key |= KEY_MOD_CTRL;
-            if (shift_held && c >= 'a' && c <= 'z') {
-                /* Shift already handled by scancode_ascii_shift for printable chars,
-                 * but add flag for special handling (e.g., shift+arrow = select) */
-            }
             if (shift_held) key |= KEY_MOD_SHIFT;
             input_event_t ev = { EVENT_KEY_DOWN, key, 0, 0, 0 };
             input_push(&ev);
@@ -139,12 +163,44 @@ void keyboard_handler(void) {
     }
 }
 
+/* Game input: poll whether a key is currently held (by scancode) */
+bool keyboard_is_pressed(uint8_t scancode) {
+    if (scancode >= KEY_STATE_SIZE) return false;
+    return key_state[scancode];
+}
+
 /* Initialize keyboard — nothing special needed beyond IRQ registration */
 void keyboard_init(void) {
     kb_head = 0;
     kb_tail = 0;
     shift_held = false;
-    /* IRQ1 handler is registered in irq_init() */
+    for (int i = 0; i < KEY_STATE_SIZE; i++) key_state[i] = false;
+
+    /* Set fast typematic rate: 250ms delay, 30 chars/sec repeat.
+     * PS/2 command 0xF3 sets typematic rate/delay.
+     * Byte format: bits 6-5 = delay (00=250ms), bits 4-0 = rate (00=30/s) */
+    {
+        int timeout;
+        /* Wait for input buffer clear, then send command */
+        for (timeout = 10000; timeout > 0 && (inb(0x64) & 0x02); timeout--) io_wait();
+        outb(0x60, 0xF3);
+        /* Wait for ACK (0xFA) from keyboard */
+        for (timeout = 10000; timeout > 0; timeout--) {
+            io_wait();
+            if (!(inb(0x64) & 0x02) && (inb(0x64) & 0x01)) {
+                uint8_t ack = inb(0x60);
+                if (ack == 0xFA) break;
+            }
+        }
+        /* Send data byte */
+        for (timeout = 10000; timeout > 0 && (inb(0x64) & 0x02); timeout--) io_wait();
+        outb(0x60, 0x00);  /* 250ms delay, 30 chars/sec */
+        /* Wait for ACK */
+        for (timeout = 10000; timeout > 0; timeout--) {
+            io_wait();
+            if ((inb(0x64) & 0x01)) { inb(0x60); break; }
+        }
+    }
 }
 
 /* Check if there's input waiting */

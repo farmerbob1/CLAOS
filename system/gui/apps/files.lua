@@ -32,7 +32,8 @@ local function render_file_row(item, x, y, w, h, sel, row_bg)
         local ext = item.name:match("%.(%w+)$") or ""
         local fc = g.rgb(160,160,180)
         if ext == "lua" then fc = g.rgb(80,120,220)
-        elseif ext == "txt" then fc = g.rgb(180,180,100) end
+        elseif ext == "txt" then fc = g.rgb(180,180,100)
+        elseif ext == "bsp" or ext == "ctx" then fc = g.rgb(220,80,80) end
         g.rounded_rect(ix+2, iy, 18, 22, 3, fc)
         g.rounded_rect(ix+3, iy+1, 16, 20, 2, g.rgb(240,240,240))
         g.rect(ix+14, iy, 6, 6, fc)
@@ -44,16 +45,25 @@ local function render_file_row(item, x, y, w, h, sel, row_bg)
     local t1 = WIDGETS.colors.t1
     local t3 = WIDGETS.colors.t3
     g.text(x+38, y+8, item.name, t1, row_bg)
-    -- Size
+    -- Size (right-aligned with padding, integer math only)
     if item.is_dir then
-        g.text(x+w-60, y+8, "Folder", t3, row_bg)
+        local stxt = "Folder"
+        g.text(x+w-8-#stxt*FW, y+8, stxt, t3, row_bg)
     else
         local sz = item.size
         local str
-        if sz >= 1048576 then str = string.format("%.1f MB", sz/1048576)
-        elseif sz >= 1024 then str = string.format("%.1f KB", sz/1024)
-        else str = sz .. " B" end
-        g.text(x+w-60, y+8, str, t3, row_bg)
+        if sz >= 1048576 then
+            local whole = sz // 1048576
+            local frac = ((sz % 1048576) * 100) // 1048576
+            str = whole .. "." .. string.format("%02d", frac) .. " MB"
+        elseif sz >= 1024 then
+            local whole = sz // 1024
+            local frac = ((sz % 1024) * 100) // 1024
+            str = whole .. "." .. string.format("%02d", frac) .. " KB"
+        else
+            str = sz .. " B"
+        end
+        g.text(x+w-8-#str*FW, y+8, str, t3, row_bg)
     end
 end
 
@@ -79,6 +89,11 @@ return {
                         local ext = item.name:match("%.(%w+)$") or ""
                         if ext == "lua" then
                             WM.open_with("term", {run=item.full, name=item.name})
+                        elseif ext == "bsp" or ext == "ctx" or ext == "bin" then
+                            -- Binary files: open 3D engine if bsp, otherwise skip
+                            if ext == "bsp" then
+                                WM.open_with("3d", {level=item.full})
+                            end
                         else
                             WM.open_with("notepad", {path=item.full, name=item.name})
                         end

@@ -22,4 +22,9 @@ uint8_t mouse_get_buttons(void);
 /* Set screen bounds (call after VESA mode is known) */
 void mouse_set_bounds(int width, int height);
 
+/* Raw delta mode for FPS mouselook — accumulates dx/dy without moving cursor */
+void mouse_set_raw_mode(bool enable);
+void mouse_get_delta(int* dx, int* dy);  /* reads and resets accumulated deltas */
+bool mouse_is_raw_mode(void);
+
 #endif /* CLAOS_MOUSE_H */

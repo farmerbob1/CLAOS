@@ -3,7 +3,7 @@
  * pmm.c — Physical Memory Manager
  *
  * Discovers physical RAM via the BIOS E820 memory map (stored by Stage 2
- * at address 0x8000) and manages it with a bitmap allocator.
+ * at address 0x700) and manages it with a bitmap allocator.
  *
  * Each bit in the bitmap represents one 4KB page:
  *   bit = 0 → page is free
@@ -19,8 +19,8 @@
 #include "vga.h"
 
 /* E820 memory map is stored by Stage 2 at these addresses */
-#define E820_COUNT_ADDR  0x8000     /* uint16_t: number of entries */
-#define E820_ENTRIES_ADDR 0x8004    /* struct e820_entry[]: the entries */
+#define E820_COUNT_ADDR  0x700      /* uint16_t: number of entries */
+#define E820_ENTRIES_ADDR 0x704     /* struct e820_entry[]: the entries */
 
 /* Bitmap — we support up to 128MB of RAM (32768 pages = 4096 bytes of bitmap)
  * This could be made dynamic, but 128MB is plenty for a toy OS. */

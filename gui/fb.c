@@ -117,6 +117,10 @@ bool fb_is_active(void) {
     return fb.active;
 }
 
+uint32_t* fb_get_backbuffer(void) {
+    return fb.backbuffer;
+}
+
 void fb_swap(void) {
     if (!fb.active) return;
 

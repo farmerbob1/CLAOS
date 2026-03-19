@@ -23,6 +23,7 @@ QEMU    = /c/msys64/mingw64/bin/qemu-system-i386
 CFLAGS  = -ffreestanding -nostdlib -fno-builtin -fno-pie \
           -Wall -Wextra -Wno-unused-parameter \
           -I include -I kernel -I drivers -I net -I claude -I shell -I fs -I lua -I gui \
+          -I engine3d \
           -I lib/bearssl/inc -I lib/bearssl/src \
           -I lib/lua/src \
           -O2 -g
@@ -75,6 +76,15 @@ C_SOURCES = kernel/main.c \
             gui/font.c \
             gui/console.c \
             gui/input.c \
+            engine3d/trig_tables.c \
+            engine3d/light.c \
+            engine3d/texture.c \
+            engine3d/bsp.c \
+            engine3d/render.c \
+            engine3d/visplane.c \
+            engine3d/sprite.c \
+            engine3d/collision.c \
+            engine3d/gui3d_lua.c \
             lib/bearssl/bearssl_shim.c \
             lib/lua/lua_shim.c
 
@@ -138,9 +148,12 @@ $(LUA_OBJECTS): %.o: %.c
 %.o: %.asm
 	$(AS) $(ASFLAGS_ELF) $< -o $@
 
+# libgcc provides __divdi3 etc. for 64-bit math on i686
+LIBGCC = $(shell $(CC) -print-libgcc-file-name)
+
 # Link all kernel + BearSSL objects into a flat binary
 kernel.bin: $(OBJECTS)
-	$(LD) $(LDFLAGS) -o kernel.elf $(OBJECTS)
+	$(LD) $(LDFLAGS) -o kernel.elf $(OBJECTS) $(LIBGCC)
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 	@echo "Kernel size: $$(stat -c%s kernel.bin) bytes"
 
@@ -172,6 +185,12 @@ claos.img: boot/stage1.bin boot/stage2.bin kernel.bin
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/monitor.lua system/gui/apps/monitor.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/files.lua system/gui/apps/files.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/notepad.lua system/gui/apps/notepad.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/doom.lua system/gui/apps/doom.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /games; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /games/demo; \
+		if [ -f maps/demo.bsp ]; then \
+			MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /games/demo/e1m1.bsp maps/demo.bsp; \
+		fi; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /tests; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /tests/audio_test.lua tests/audio_test.lua; \
 	fi
@@ -209,8 +228,14 @@ gui: claos.img
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/monitor.lua system/gui/apps/monitor.lua
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/files.lua system/gui/apps/files.lua
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/notepad.lua system/gui/apps/notepad.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/doom.lua system/gui/apps/doom.lua
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /tests
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /tests/audio_test.lua tests/audio_test.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /games
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /games/demo
+	@if [ -f maps/demo.bsp ]; then \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /games/demo/e1m1.bsp maps/demo.bsp; \
+	fi
 	@echo "=== GUI files updated ==="
 
 # Run in QEMU with e1000 NIC
