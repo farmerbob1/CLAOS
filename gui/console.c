@@ -33,6 +33,9 @@ static uint32_t cur_bg = FB_BLACK;
 static int num_cols = 80;      /* Actual columns (based on resolution) */
 static int num_rows = 25;      /* Actual rows (based on resolution) */
 static bool batch_mode = false; /* When true, console_flush is suppressed */
+static bool cursor_visible = true; /* Software cursor state (toggled by timer) */
+static uint32_t cursor_last_toggle = 0; /* Tick count of last cursor blink */
+#define CURSOR_BLINK_MS 500
 
 void console_init(void) {
     const fb_info_t* info = fb_get_info();
@@ -170,8 +173,31 @@ void console_flush(void) {
         line_dirty[r] = false;
     }
 
+    /* Draw software cursor: underline at cursor position.
+     * Blinks by toggling every CURSOR_BLINK_MS using timer ticks. */
+    extern uint32_t timer_get_ticks(void);
+    uint32_t now = timer_get_ticks();
+    if (now - cursor_last_toggle >= CURSOR_BLINK_MS / 10) {
+        cursor_visible = !cursor_visible;
+        cursor_last_toggle = now;
+    }
+
+    if (cx < num_cols && cy < num_rows) {
+        int px = cx * FONT_WIDTH;
+        int py = cy * FONT_HEIGHT;
+        /* Draw underline cursor (last 2 rows of the character cell) */
+        uint32_t cursor_color = cursor_visible ? cur_fg : cur_bg;
+        for (int row = FONT_HEIGHT - 2; row < FONT_HEIGHT; row++) {
+            for (int col = 0; col < FONT_WIDTH; col++) {
+                fb_pixel(px + col, py + row, cursor_color);
+            }
+        }
+        /* Make sure cursor row is included in the swap region */
+        if (cy < min_dirty) min_dirty = cy;
+        if (cy > max_dirty) max_dirty = cy;
+    }
+
     if (max_dirty >= 0) {
-        /* Only swap the pixel rows that were actually dirty */
         fb_swap_region(min_dirty * FONT_HEIGHT, (max_dirty + 1) * FONT_HEIGHT);
     }
 }

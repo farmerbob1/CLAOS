@@ -17,7 +17,7 @@ stage2_start:
     mov si, msg_stage2
     call print_string_rm
 
-    ; Detect and set VESA mode (VGA BIOS is ready after print_string_rm used INT 10h)
+    ; Probe VBE capabilities (does NOT switch mode — stays in text mode)
     call detect_vbe
 
     call detect_memory
@@ -218,14 +218,24 @@ pm_entry:
     jmp $
 
 ; ──────────────────────────────────────────────────────────────
-; VBE Detection Subroutine (placed after 32-bit section to avoid
-; shifting GDT/pm_entry addresses which causes cross-section
-; relocation issues in NASM flat binaries)
+; VBE Probe Subroutine — detect-only, does NOT switch video mode.
+; Stores VBE capabilities at 0x9000 for the kernel to use later
+; when the GUI is launched. Boot stays in text mode.
+;
+; Memory layout at 0x9000:
+;   0x9000 (1B): 0 = no VBE, 1 = VBE mode found (not yet active)
+;   0x9002 (2B): VBE mode number (with 0x4000 linear FB bit)
+;   0x9004 (4B): framebuffer physical address
+;   0x9008 (2B): X resolution
+;   0x900A (2B): Y resolution
+;   0x900C (2B): pitch (bytes per scanline)
+;   0x900E (1B): bits per pixel
 [BITS 16]
 detect_vbe:
     pusha
     mov byte [0x9000], 0
 
+    ; Get VBE Controller Info
     push es
     xor ax, ax
     mov es, ax
@@ -237,6 +247,7 @@ detect_vbe:
     cmp ax, 0x004F
     jne .vdone
 
+    ; Try mode 0x118 (1024x768)
     push es
     xor ax, ax
     mov es, ax
@@ -247,19 +258,18 @@ detect_vbe:
     pop es
     cmp ax, 0x004F
     jne .vtry2
-
-    ; Accept 32bpp or 24bpp
     cmp byte [0x9200 + 25], 32
-    je .vmode_ok
+    je .vfound_118
     cmp byte [0x9200 + 25], 24
-    je .vmode_ok
+    je .vfound_118
     jmp .vtry2
 
-.vmode_ok:
-    mov bx, 0x4118
-    jmp .vset
+.vfound_118:
+    mov word [0x9002], 0x4118
+    jmp .vstore
 
 .vtry2:
+    ; Try mode 0x115 (800x600)
     push es
     xor ax, ax
     mov es, ax
@@ -271,19 +281,16 @@ detect_vbe:
     cmp ax, 0x004F
     jne .vdone
     cmp byte [0x9200 + 25], 32
-    je .vfb_ok
+    je .vfound_115
     cmp byte [0x9200 + 25], 24
-    je .vfb_ok
+    je .vfound_115
     jmp .vdone
-.vfb_ok:
-    mov bx, 0x4115
 
-.vset:
-    mov ax, 0x4F02
-    int 0x10
-    cmp ax, 0x004F
-    jne .vdone
+.vfound_115:
+    mov word [0x9002], 0x4115
 
+.vstore:
+    ; Store mode info for kernel (but do NOT set the mode)
     mov byte [0x9000], 1
     mov eax, [0x9200 + 40]
     mov [0x9004], eax

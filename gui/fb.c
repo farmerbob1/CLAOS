@@ -51,53 +51,61 @@ static inline void memset32(void* dest, uint32_t value, uint32_t count) {
 }
 
 bool fb_init(void) {
+    /* Read VBE probe results from stage2 (mode NOT active yet) */
     uint8_t vbe_status = *(volatile uint8_t*)VBE_STATUS_ADDR;
     if (vbe_status != 1) {
         fb.active = false;
-        serial_print("[FB] No VESA mode (text mode fallback)\n");
         return false;
     }
 
+    /* Store the probed info — mode will be activated by fb_activate() */
     fb.framebuffer = (uint32_t*)(*(volatile uint32_t*)VBE_FB_ADDR);
     fb.backbuffer  = back_buffer;
     fb.width       = *(volatile uint16_t*)VBE_WIDTH_ADDR;
     fb.height      = *(volatile uint16_t*)VBE_HEIGHT_ADDR;
     fb.pitch       = *(volatile uint16_t*)VBE_PITCH_ADDR;
     fb.bpp         = *(volatile uint8_t*)VBE_BPP_ADDR;
-    fb.active      = true;
+    fb.active      = false;  /* Not active until fb_activate() is called */
 
-    /* Test: write a single white pixel directly to framebuffer */
-    uint8_t* test = (uint8_t*)fb.framebuffer;
-    test[0] = 0xFF; test[1] = 0xFF; test[2] = 0xFF;  /* White pixel */
-    serial_print("[FB] Direct pixel write OK\n");
+    serial_print("[FB] VBE probed OK\n");
+    return true;
+}
 
-    /* Clear back buffer to black */
+/* Bochs VBE display interface — works in QEMU/Bochs without real mode.
+ * These I/O ports control the virtual VGA adapter directly. */
+#define VBE_DISPI_IOPORT_INDEX  0x01CE
+#define VBE_DISPI_IOPORT_DATA   0x01CF
+#define VBE_DISPI_INDEX_XRES    0x01
+#define VBE_DISPI_INDEX_YRES    0x02
+#define VBE_DISPI_INDEX_BPP     0x03
+#define VBE_DISPI_INDEX_ENABLE  0x04
+#define VBE_DISPI_INDEX_BANK    0x05
+#define VBE_DISPI_INDEX_VIRT_WIDTH  0x06
+#define VBE_DISPI_INDEX_VIRT_HEIGHT 0x07
+#define VBE_DISPI_ENABLED       0x01
+#define VBE_DISPI_LFB_ENABLED  0x40
+
+static void vbe_write(uint16_t index, uint16_t value) {
+    outw(VBE_DISPI_IOPORT_INDEX, index);
+    outw(VBE_DISPI_IOPORT_DATA, value);
+}
+
+bool fb_activate(void) {
+    if (fb.active) return true;   /* Already active */
+    if (!fb.framebuffer) return false;  /* No VBE probed */
+
+    /* Set VBE mode via Bochs dispi interface (no real mode needed) */
+    vbe_write(VBE_DISPI_INDEX_ENABLE, 0x00);          /* Disable first */
+    vbe_write(VBE_DISPI_INDEX_XRES, fb.width);
+    vbe_write(VBE_DISPI_INDEX_YRES, fb.height);
+    vbe_write(VBE_DISPI_INDEX_BPP, fb.bpp);
+    vbe_write(VBE_DISPI_INDEX_ENABLE, VBE_DISPI_ENABLED | VBE_DISPI_LFB_ENABLED);
+
+    fb.active = true;
     fb_clear(FB_BLACK);
+    fb_swap();
 
-    serial_print("[FB] VESA framebuffer initialized: ");
-    /* Print framebuffer address and dimensions to serial */
-    char hex[9];
-    uint32_t addr = (uint32_t)fb.framebuffer;
-    for (int i = 7; i >= 0; i--) { hex[i] = "0123456789ABCDEF"[addr & 0xF]; addr >>= 4; }
-    hex[8] = 0;
-    serial_print("fb=0x"); serial_print(hex);
-    serial_print(" w=");
-    char dbuf[8]; int di = 0; int v = fb.width;
-    if (v == 0) dbuf[di++] = '0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
-    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
-    serial_print(" h=");
-    di=0; v=fb.height;
-    if(v==0)dbuf[di++]='0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
-    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
-    serial_print(" bpp=");
-    di=0; v=fb.bpp;
-    if(v==0)dbuf[di++]='0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
-    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
-    serial_print(" pitch=");
-    di=0; v=fb.pitch;
-    if(v==0)dbuf[di++]='0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
-    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
-    serial_print("\n");
+    serial_print("[FB] VESA mode activated\n");
     return true;
 }
 

@@ -37,8 +37,6 @@
 #include "chaosfs.h"
 #include "claos_lib.h"
 #include "shell.h"
-#include "fb.h"
-#include "console.h"
 
 /* IRQ handler functions defined in driver files */
 extern void timer_handler(void);
@@ -65,7 +63,6 @@ static void keyboard_irq_handler(struct registers* regs) {
  * This proves the scheduler is actually running multiple tasks.
  */
 static void task_status_indicator(void) {
-    if (fb_is_active()) { while(1) task_sleep(10000); }
     volatile uint16_t* vga = (uint16_t*)0xB8000;
     /* Position: row 0, col 79 (top-right corner) */
     int pos = 79;
@@ -83,7 +80,6 @@ static void task_status_indicator(void) {
  * Demo task: shows uptime counter in the top-right area.
  */
 static void task_uptime_display(void) {
-    if (fb_is_active()) { while(1) task_sleep(10000); }
     volatile uint16_t* vga = (uint16_t*)0xB8000;
 
     while (1) {
@@ -231,31 +227,12 @@ void kernel_main(void) {
     boot_msg("Virtual memory (paging)", "OK");
     serial_print("[CLAOS] VMM OK\n");
 
-    /* Step 8b: Map VESA framebuffer if stage2 set VBE mode.
-     * Skip the NOCACHE remap — the 4MB PSE identity mapping already works
-     * for framebuffer access. NOCACHE is ideal but not strictly required
-     * since we flush the full buffer on each swap. */
+    /* Step 8b: Check if VBE was probed by stage2 (mode NOT set yet) */
     if (*(volatile uint8_t*)0x9000 == 1) {
-        /* Framebuffer at 0xFD000000 is already identity-mapped via 4MB PSE pages.
-         * We skip vmm_map_framebuffer for now to avoid page table splitting
-         * that triggers a QEMU 10.2.1 TCG assertion bug. */
-        serial_print("[CLAOS] Framebuffer identity-mapped via PSE\n");
-    }
-
-    /* Step 8c: Initialize framebuffer console */
-    if (fb_init()) {
-        console_init();
-        vga_set_framebuffer_mode(true);
-        console_set_batch(true);  /* Suppress flushing during boot messages */
-        print_banner();
-        boot_msg("VESA framebuffer", "OK");
-        boot_msg("Global Descriptor Table", "OK");
-        boot_msg("Interrupt Descriptor Table", "OK");
-        boot_msg("Initializing consciousness", "done");
-        boot_msg("PIT Timer (100 Hz)", "OK");
-        boot_msg("PS/2 Keyboard", "OK");
-        boot_msg("Physical memory", "OK");
-        boot_msg("Virtual memory (paging)", "OK");
+        boot_msg("VBE graphics", "AVAILABLE (on demand)");
+        serial_print("[CLAOS] VBE mode available for GUI launch\n");
+    } else {
+        boot_msg("VBE graphics", "NOT DETECTED");
     }
 
     /* Step 9: Kernel heap — place it after the kernel in physical memory.
@@ -356,11 +333,6 @@ void kernel_main(void) {
     boot_msg("Background tasks", "OK");
 
     vga_print("\n");
-
-    /* End batch mode — flush all boot messages to screen at once */
-    if (fb_is_active()) {
-        console_set_batch(false);
-    }
 
     /* Hand off to the ClaudeShell — this never returns */
     shell_run();

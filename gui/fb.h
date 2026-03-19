@@ -32,8 +32,14 @@ typedef struct {
 #define VBE_PITCH_ADDR      0x900C
 #define VBE_BPP_ADDR        0x900E
 
-/* Initialize framebuffer from VBE info. Returns true if VESA active. */
+/* Probe VBE info from stage2 data (does NOT switch video mode).
+ * Returns true if VBE mode is available. */
 bool fb_init(void);
+
+/* Activate VESA mode (switches from text mode to graphical framebuffer).
+ * Call this when launching the GUI, not at boot. Uses Bochs VBE dispi
+ * interface to set mode from protected mode without real-mode INT 10h. */
+bool fb_activate(void);
 
 /* Get framebuffer info struct */
 const fb_info_t* fb_get_info(void);
