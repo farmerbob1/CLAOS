@@ -69,7 +69,7 @@ void vga_clear(void) {
 void vga_putchar(char c) {
     if (use_framebuffer) {
         console_putchar(c);
-        if (c == '\n') console_flush();
+        console_flush();
         return;
     }
     if (c == '\n') { cursor_x = 0; cursor_y++; }

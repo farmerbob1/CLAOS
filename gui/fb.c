@@ -143,6 +143,37 @@ void fb_swap(void) {
     }
 }
 
+void fb_swap_region(int y_start, int y_end) {
+    if (!fb.active) return;
+    if (y_start < 0) y_start = 0;
+    if (y_end > fb.height) y_end = fb.height;
+
+    uint8_t* dst = (uint8_t*)fb.framebuffer + y_start * fb.pitch;
+    uint32_t* src = fb.backbuffer + y_start * fb.width;
+
+    if (fb.bpp == 32) {
+        for (int y = y_start; y < y_end; y++) {
+            memcpy32(dst, src, fb.width);
+            dst += fb.pitch;
+            src += fb.width;
+        }
+    } else if (fb.bpp == 24) {
+        for (int y = y_start; y < y_end; y++) {
+            uint8_t* rp = row_buf_24;
+            for (int x = 0; x < fb.width; x++) {
+                uint32_t pixel = src[x];
+                rp[0] = (uint8_t)(pixel);
+                rp[1] = (uint8_t)(pixel >> 8);
+                rp[2] = (uint8_t)(pixel >> 16);
+                rp += 3;
+            }
+            memcpy(dst, row_buf_24, fb.width * 3);
+            dst += fb.pitch;
+            src += fb.width;
+        }
+    }
+}
+
 void fb_clear(uint32_t color) {
     if (!fb.active) return;
     memset32(fb.backbuffer, color, fb.width * fb.height);

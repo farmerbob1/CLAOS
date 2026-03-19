@@ -44,6 +44,9 @@ bool fb_is_active(void);
 /* Swap back buffer to screen (copy to framebuffer) */
 void fb_swap(void);
 
+/* Swap only a region of rows (for efficient partial updates) */
+void fb_swap_region(int y_start, int y_end);
+
 /* Clear back buffer to solid color */
 void fb_clear(uint32_t color);
 

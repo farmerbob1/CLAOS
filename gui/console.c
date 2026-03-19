@@ -152,10 +152,16 @@ void console_set_batch(bool batch) {
 
 void console_flush(void) {
     if (!fb_is_active()) return;
-    if (batch_mode) return;  /* Suppress during batch mode */
+    if (batch_mode) return;
+
+    int min_dirty = num_rows;
+    int max_dirty = -1;
 
     for (int r = 0; r < num_rows; r++) {
         if (!line_dirty[r]) continue;
+
+        if (r < min_dirty) min_dirty = r;
+        if (r > max_dirty) max_dirty = r;
 
         for (int c = 0; c < num_cols; c++) {
             console_cell_t* cell = &cells[r][c];
@@ -164,7 +170,10 @@ void console_flush(void) {
         line_dirty[r] = false;
     }
 
-    fb_swap();
+    if (max_dirty >= 0) {
+        /* Only swap the pixel rows that were actually dirty */
+        fb_swap_region(min_dirty * FONT_HEIGHT, (max_dirty + 1) * FONT_HEIGHT);
+    }
 }
 
 int console_get_cols(void) { return num_cols; }
