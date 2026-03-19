@@ -22,6 +22,9 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 ### Kernel Panic
 ![CLAOS Kernel Panic](Screenshots/Screenshot%202026-03-18%20162359.png)
 
+### 3D Engine (Not Doom)
+![CLAOS 3D Engine](Screenshots/notdoom.png)
+
 ---
 
 ## Features
@@ -76,7 +79,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - Inline Lua execution (`luarun <code>`)
 - Pre-installed scripts on ChaosFS: `/scripts/hello.lua`, `/scripts/chat.lua`
 
-### Phase 8 — GUI Desktop & Audio (Current)
+### Phase 8 — GUI Desktop & Audio
 - **VESA framebuffer** graphics with Lua-driven desktop environment
 - Floating window manager with draggable, resizable windows
 - App framework: terminal emulator, file browser, notepad viewer
@@ -84,6 +87,19 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - Shared widget system (buttons, text fields, scroll bars)
 - **AC97 audio driver** — DMA ring buffer playback with sine wave tone generation
 - Intel 82801AA codec support via PCI bus master I/O
+
+### Phase 9 — 3D Engine (Current)
+- **BSP software 3D renderer** — Doom-style column-based rendering, all CPU, no GPU
+- 16.16 fixed-point math with pre-generated 4096-entry trig lookup tables
+- BSP tree front-to-back traversal with per-column occlusion culling
+- Perspective-correct texture mapping (1/z interpolation) with sub-pixel anchoring
+- Procedural textures (brick, stone, checkerboard), CTX texture file format
+- 32-level lighting LUT with distance-based dimming
+- 2D collision detection with wall sliding
+- **Game input system** — scancode key state polling, mouse raw delta mode for FPS
+- Lua API: `claos.gui3d.*` (camera, viewport, render, textures, sprites, collision)
+- Renders into any viewport — works fullscreen or inside desktop GUI windows
+- Host tools: BSP compiler (`bspbuild.py`), trig table generator (`gen_trig.py`)
 
 ## Shell Commands
 
@@ -125,7 +141,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | 6 | **Done** | ChaosFS Custom Filesystem |
 | 7 | **Done** | Embedded Lua 5.5 Scripting |
 | 8 | **Done** | GUI Desktop & AC97 Audio |
-| 9 | Planned | 3D Engine |
+| 9 | **Active** | BSP 3D Engine |
 
 ---
 
@@ -161,7 +177,7 @@ Either edit `claude/config.h` with your API key before building, or use the `con
 ┌──────────────────────────────────────────────────┐
 │                  CLAOS Stack                      │
 ├──────────────────────────────────────────────────┤
-│  GUI Desktop (Lua + VESA framebuffer)              │
+│  BSP 3D Engine + GUI Desktop (Lua + VESA)          │
 ├──────────────────────────────────────────────────┤
 │  ClaudeShell (AI-first interactive shell)          │
 ├──────────────────────────────────────────────────┤
