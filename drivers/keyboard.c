@@ -107,8 +107,13 @@ char keyboard_getchar(void) {
         /* Halt until next interrupt to save CPU */
         __asm__ volatile ("hlt");
     }
+    /* Disable interrupts while reading to prevent ISR from modifying
+     * kb_head between our read and tail update (defensive — the SPSC
+     * pattern is safe on single-core x86 but this costs nothing). */
+    __asm__ volatile ("cli");
     char c = kb_buffer[kb_tail];
     kb_tail = (kb_tail + 1) % KB_BUFFER_SIZE;
+    __asm__ volatile ("sti");
     return c;
 }
 

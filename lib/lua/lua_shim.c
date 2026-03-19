@@ -42,15 +42,19 @@ void* realloc(void* ptr, size_t new_size) {
         return kmalloc(new_size);
     }
 
-    /* Get the actual usable size of the old block from the heap header,
-     * so we only copy what was actually allocated (not beyond). */
+    /* Get the actual usable size from the heap block header */
     extern size_t kmalloc_usable_size(void* ptr);
     size_t old_size = kmalloc_usable_size(ptr);
-    size_t copy_size = old_size < new_size ? old_size : new_size;
+
+    /* If shrinking or the block already has enough room, reuse it.
+     * kmalloc rounds up to 16 bytes, so small growth often fits. */
+    if (new_size <= old_size) {
+        return ptr;
+    }
 
     void* new_ptr = kmalloc(new_size);
     if (new_ptr) {
-        memcpy(new_ptr, ptr, copy_size);
+        memcpy(new_ptr, ptr, old_size);
         kfree(ptr);
     }
     return new_ptr;
@@ -274,10 +278,13 @@ int snprintf(char* buf, size_t size, const char* fmt, ...) {
     return ret;
 }
 
+/* sprintf — callers MUST ensure buf is large enough. We cap at 1024 bytes
+ * as a safety net since we can't know the actual buffer size. Lua internals
+ * typically use small buffers for number formatting. */
 int sprintf(char* buf, const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int ret = vsnprintf(buf, 4096, fmt, ap);
+    int ret = vsnprintf(buf, 1024, fmt, ap);
     va_end(ap);
     return ret;
 }
