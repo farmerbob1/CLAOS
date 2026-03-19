@@ -25,6 +25,8 @@
 #include "chaosfs.h"
 #include "string.h"
 #include "io.h"
+#include "fb.h"
+#include "font.h"
 
 /* Global Lua state */
 static lua_State* global_L = NULL;
@@ -172,18 +174,54 @@ static const luaL_Reg claos_funcs[] = {
     {NULL, NULL}
 };
 
+/* ── GUI Bindings ── */
+static int l_gui_width(lua_State* L) { const fb_info_t* i = fb_get_info(); lua_pushinteger(L, i->active ? i->width : 0); return 1; }
+static int l_gui_height(lua_State* L) { const fb_info_t* i = fb_get_info(); lua_pushinteger(L, i->active ? i->height : 0); return 1; }
+static int l_gui_active(lua_State* L) { lua_pushboolean(L, fb_is_active()); return 1; }
+static int l_gui_clear(lua_State* L) { fb_clear((uint32_t)luaL_checkinteger(L,1)); return 0; }
+static int l_gui_pixel(lua_State* L) { fb_pixel((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(uint32_t)luaL_checkinteger(L,3)); return 0; }
+static int l_gui_rect(lua_State* L) { fb_rect((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); return 0; }
+static int l_gui_rect_outline(lua_State* L) { fb_rect_outline((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); return 0; }
+static int l_gui_line(lua_State* L) { fb_line((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); return 0; }
+static int l_gui_circle(lua_State* L) { fb_circle((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
+static int l_gui_circle_filled(lua_State* L) { fb_circle_filled((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
+static int l_gui_text(lua_State* L) { int w = fb_text((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),luaL_checkstring(L,3),(uint32_t)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); lua_pushinteger(L,w); return 1; }
+static int l_gui_swap(lua_State* L) { (void)L; fb_swap(); return 0; }
+static int l_gui_rgb(lua_State* L) { lua_pushinteger(L,(lua_Integer)(int32_t)FB_RGB((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3))); return 1; }
+
+static const luaL_Reg gui_funcs[] = {
+    {"width",l_gui_width},{"height",l_gui_height},{"active",l_gui_active},
+    {"clear",l_gui_clear},{"pixel",l_gui_pixel},{"rect",l_gui_rect},
+    {"rect_outline",l_gui_rect_outline},{"line",l_gui_line},
+    {"circle",l_gui_circle},{"circle_filled",l_gui_circle_filled},
+    {"text",l_gui_text},{"swap",l_gui_swap},{"rgb",l_gui_rgb},{NULL,NULL}
+};
+
 /* Register the claos library */
 void claos_lua_register(lua_State* L) {
     serial_print("[LUA] Registering claos lib...\n");
-    /* Use luaL_newlibtable + luaL_setfuncs instead of luaL_newlib
-     * to avoid luaL_checkversion which can crash in freestanding. */
     luaL_newlibtable(L, claos_funcs);
     luaL_setfuncs(L, claos_funcs, 0);
     serial_print("[LUA] newlib OK, setting global...\n");
+
+    /* Create claos.gui subtable */
+    luaL_newlibtable(L, gui_funcs);
+    luaL_setfuncs(L, gui_funcs, 0);
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_BLACK);  lua_setfield(L,-2,"BLACK");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_WHITE);  lua_setfield(L,-2,"WHITE");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_RED);    lua_setfield(L,-2,"RED");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_GREEN);  lua_setfield(L,-2,"GREEN");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_BLUE);   lua_setfield(L,-2,"BLUE");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_CYAN);   lua_setfield(L,-2,"CYAN");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_YELLOW); lua_setfield(L,-2,"YELLOW");
+    lua_pushinteger(L,(lua_Integer)(int32_t)FB_GREY);   lua_setfield(L,-2,"GREY");
+    lua_pushinteger(L,FONT_WIDTH);  lua_setfield(L,-2,"FONT_W");
+    lua_pushinteger(L,FONT_HEIGHT); lua_setfield(L,-2,"FONT_H");
+    lua_setfield(L, -2, "gui");
+
     lua_setglobal(L, "claos");
     serial_print("[LUA] claos global set\n");
 
-    /* Override the global print with our VGA version */
     lua_pushcfunction(L, l_print);
     lua_setglobal(L, "print");
     serial_print("[LUA] print override set\n");

@@ -17,6 +17,7 @@ stage2_start:
     mov si, msg_stage2
     call print_string_rm
 
+    call detect_vbe
     call detect_memory
 
     call enable_a20
@@ -213,6 +214,78 @@ pm_entry:
     cli
     hlt
     jmp $
+
+; ──────────────────────────────────────────────────────────────
+; VBE Detection Subroutine (placed after 32-bit section to avoid
+; shifting GDT/pm_entry addresses which causes cross-section
+; relocation issues in NASM flat binaries)
+[BITS 16]
+detect_vbe:
+    pusha
+    mov byte [0x9000], 0
+
+    push es
+    xor ax, ax
+    mov es, ax
+    mov ax, 0x4F00
+    mov di, 0x9010
+    mov dword [es:di], 'VBE2'
+    int 0x10
+    pop es
+    cmp ax, 0x004F
+    jne .vdone
+
+    push es
+    xor ax, ax
+    mov es, ax
+    mov ax, 0x4F01
+    mov cx, 0x118
+    mov di, 0x9200
+    int 0x10
+    pop es
+    cmp ax, 0x004F
+    jne .vfb
+    cmp byte [0x9200 + 25], 32
+    jne .vfb
+    mov bx, 0x4118
+    jmp .vset
+
+.vfb:
+    push es
+    xor ax, ax
+    mov es, ax
+    mov ax, 0x4F01
+    mov cx, 0x115
+    mov di, 0x9200
+    int 0x10
+    pop es
+    cmp ax, 0x004F
+    jne .vdone
+    cmp byte [0x9200 + 25], 32
+    jne .vdone
+    mov bx, 0x4115
+
+.vset:
+    mov ax, 0x4F02
+    int 0x10
+    cmp ax, 0x004F
+    jne .vdone
+
+    mov byte [0x9000], 1
+    mov eax, [0x9200 + 40]
+    mov [0x9004], eax
+    mov ax, [0x9200 + 18]
+    mov [0x9008], ax
+    mov ax, [0x9200 + 20]
+    mov [0x900A], ax
+    mov ax, [0x9200 + 16]
+    mov [0x900C], ax
+    mov al, [0x9200 + 25]
+    mov [0x900E], al
+
+.vdone:
+    popa
+    ret
 
 ; Pad to 9 sectors (0x1200 bytes)
 times 0x1200 - ($ - $$) db 0

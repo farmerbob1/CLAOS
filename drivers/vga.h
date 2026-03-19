@@ -67,4 +67,7 @@ void vga_set_color(uint8_t fg, uint8_t bg);
 /* Move the hardware cursor to the current position */
 void vga_update_cursor(void);
 
+/* Switch output to framebuffer console (true) or hardware VGA (false) */
+void vga_set_framebuffer_mode(bool enabled);
+
 #endif /* CLAOS_VGA_H */
