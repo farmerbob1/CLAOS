@@ -28,6 +28,15 @@ local TH,SW,RP = 36,56,200
 
 -- Helpers
 local function hit(x,y,w,h,mx,my) return mx>=x and mx<x+w and my>=y and my<y+h end
+local last_click_time = 0
+local last_click_item = -1
+local function is_dblclick(idx)
+    local now = claos.uptime()
+    local dbl = (idx == last_click_item and (now - last_click_time) < 1)
+    last_click_time = now
+    last_click_item = idx
+    return dbl
+end
 local function wrap(s,mc)
     local r={} local p=1
     while p<=#s do
@@ -189,36 +198,155 @@ local function dMon()
 end
 
 -- Files view
+-- File browser state
+local fpath = "/"
+local fsel = -1  -- selected index
+local fitems = {} -- current directory listing
+
+-- Get direct children of a path
+local function fchildren(path)
+    local all = claos.ls(path)
+    if not all then return {} end
+    local out = {}
+    local pfx = path
+    if pfx ~= "/" then pfx = pfx .. "/" end
+    for _,f in ipairs(all) do
+        local nm = f.name
+        -- Check if this is a direct child (not nested deeper)
+        if #nm > #pfx then
+            local rest = nm:sub(#pfx + 1)
+            if not rest:find("/") then
+                -- Direct child — extract just the filename
+                out[#out+1] = {name=rest, full=nm, size=f.size, is_dir=f.is_dir}
+            end
+        end
+    end
+    return out
+end
+
+-- Notepad app state
+local note_file = nil   -- path of open file
+local note_lines = {}   -- wrapped lines
+local note_scroll = 0
+local note_title = ""
+
+local function open_file(path, name)
+    local content = claos.read(path)
+    if not content then return end
+    note_file = path
+    note_title = name
+    note_lines = {}
+    -- Split into lines, then wrap each
+    local mc = math.floor((W-SW-RP-40)/FW)
+    for line in (content.."\n"):gmatch("([^\n]*)\n") do
+        if #line == 0 then
+            note_lines[#note_lines+1] = ""
+        else
+            local wl = wrap(line, mc)
+            for _,wl2 in ipairs(wl) do note_lines[#note_lines+1] = wl2 end
+        end
+    end
+    note_scroll = 0
+    view = "note"
+end
+
+local function dNote()
+    local cx,cy,cw,ch = SW,TH,W-SW-RP,H-TH
+    g.rect(cx,cy,cw,ch,T.wb)
+    -- Title bar
+    g.rect(cx,cy,cw,32,T.pn)
+    g.hline(cx,cy+31,cw,T.bd)
+    -- Back button
+    g.rounded_rect(cx+8,cy+4,28,24,6,T.ib)
+    g.text(cx+14,cy+8,"<",T.t1,T.ib)
+    -- File name
+    g.text(cx+44,cy+8,note_title,T.t1,T.pn)
+    -- Line count
+    g.text(cx+cw-100,cy+8,#note_lines.." lines",T.t3,T.pn)
+
+    -- Content area
+    local top = cy + 36
+    local bot = cy + ch
+    local visible = math.floor((bot - top) / FH)
+    local max_scroll = math.max(0, #note_lines - visible)
+    if note_scroll > max_scroll then note_scroll = max_scroll end
+    if note_scroll < 0 then note_scroll = 0 end
+
+    -- Line numbers + content
+    for i = 1, visible do
+        local li = i + note_scroll
+        if li > #note_lines then break end
+        local ly = top + (i-1) * FH
+        -- Line number
+        g.text(cx+4, ly, string.format("%3d", li), T.t3, T.wb)
+        -- Content
+        g.text(cx+36, ly, note_lines[li], T.t1, T.wb)
+    end
+
+    -- Scrollbar
+    if #note_lines > visible then
+        local sb_h = math.max(20, math.floor(visible / #note_lines * (bot-top)))
+        local sb_y = top + math.floor(note_scroll / max_scroll * (bot-top-sb_h))
+        g.rounded_rect(cx+cw-8, sb_y, 6, sb_h, 3, T.bd)
+    end
+end
+
 local function dFiles()
     local cx,cy,cw,ch=SW,TH,W-SW-RP,H-TH
     g.rect(cx,cy,cw,ch,T.wb)
-    g.text(cx+12,cy+8,"FILE BROWSER",T.t1,T.wb)
-    g.rounded_rect(cx+12,cy+28,cw-24,24,8,T.ib)
-    g.text(cx+20,cy+32,"/",T.t1,T.ib)
-    g.hline(cx,cy+58,cw,T.bd)
-    local y=cy+64
-    local ls=claos.ls("/")
-    if ls then
-        for _,f in ipairs(ls) do
-            if y+28>cy+ch then break end
-            g.rect(cx+4,y,cw-8,28,T.wb)
-            if f.is_dir then
-                g.rounded_rect(cx+12,y+2,24,24,4,T.al)
-                g.text(cx+16,y+6,"D",T.ac,T.al)
-            else
-                g.rounded_rect(cx+12,y+2,24,24,4,T.pn)
-                g.text(cx+16,y+6,"F",T.t3,T.pn)
-            end
-            local nm=f.name
-            g.text(cx+44,y+6,nm,T.t1,T.wb)
-            if not f.is_dir then
-                local sz=f.size
-                local s=sz>=1024 and string.format("%.1fKB",sz/1024) or sz.."B"
-                g.text(cx+cw-80,y+6,s,T.t3,T.wb)
-            end
-            g.hline(cx+12,y+28,cw-24,T.bd)
-            y=y+32
+
+    -- Title bar with back button
+    if fpath ~= "/" then
+        g.rounded_rect(cx+8,cy+6,28,24,6,T.ib)
+        g.text(cx+14,cy+10,"<",T.t1,T.ib)
+        g.text(cx+44,cy+8,"FILE BROWSER",T.t1,T.wb)
+    else
+        g.text(cx+12,cy+8,"FILE BROWSER",T.t1,T.wb)
+    end
+
+    -- Path bar
+    g.rounded_rect(cx+12,cy+32,cw-24,24,8,T.ib)
+    local dp = fpath
+    if #dp > math.floor((cw-40)/FW) then dp = "..."..dp:sub(-math.floor((cw-48)/FW)) end
+    g.text(cx+20,cy+36,dp,T.t1,T.ib)
+    g.hline(cx,cy+62,cw,T.bd)
+
+    -- File listing
+    fitems = fchildren(fpath)
+    local y = cy + 68
+    for i,f in ipairs(fitems) do
+        if y + 32 > cy + ch then break end
+        -- Selection highlight
+        local row_bg = (i == fsel) and T.al or T.wb
+        g.rect(cx+4,y,cw-8,30,row_bg)
+        -- Icon
+        if f.is_dir then
+            g.rounded_rect(cx+12,y+3,24,24,6,T.al)
+            g.text(cx+17,y+7,"D",T.ac,T.al)
+        else
+            g.rounded_rect(cx+12,y+3,24,24,6,T.pn)
+            g.text(cx+17,y+7,"F",T.t3,T.pn)
         end
+        -- Name
+        g.text(cx+44,y+7,f.name,T.t1,row_bg)
+        -- Size or "Folder"
+        if f.is_dir then
+            g.text(cx+cw-72,y+7,"Folder",T.t3,row_bg)
+        else
+            local sz=f.size
+            local s
+            if sz>=1048576 then s=string.format("%.1f MB",sz/1048576)
+            elseif sz>=1024 then s=string.format("%.1f KB",sz/1024)
+            else s=sz.." B" end
+            g.text(cx+cw-72,y+7,s,T.t3,row_bg)
+        end
+        g.hline(cx+12,y+30,cw-24,T.bd)
+        y = y + 34
+    end
+
+    -- Empty folder message
+    if #fitems == 0 then
+        g.text(cx+20,cy+80,"Empty folder",T.t3,T.wb)
     end
 end
 
@@ -240,7 +368,8 @@ local function dAll()
     if view=="chat" then dChat()
     elseif view=="term" then dTerm()
     elseif view=="mon" then dMon()
-    elseif view=="files" then dFiles() end
+    elseif view=="files" then dFiles()
+    elseif view=="note" then dNote() end
     dRight()
 end
 
@@ -297,6 +426,10 @@ while run do
                     ti=ti..string.char(ev.key)
                 end
                 dirty=true
+            elseif view=="note" then
+                -- Scroll notepad with - and + or space
+                if ev.key==45 then note_scroll=note_scroll-5; dirty=true  -- minus
+                elseif ev.key==43 or ev.key==32 then note_scroll=note_scroll+5; dirty=true end -- plus/space
             end
         elseif ev.type==g.MOUSE_MOVE then
             lmx,lmy=ev.x,ev.y; dirty=true
@@ -310,6 +443,55 @@ while run do
             -- Theme toggle
             if hit(9,H-50,38,38,lmx,lmy) then
                 dk=not dk; T=mkT(dk); dirty=true
+            end
+            -- File browser clicks
+            if view=="files" then
+                local cx,cy=SW,TH
+                local cw=W-SW-RP
+                -- Back button
+                if fpath~="/" and hit(cx+8,cy+6,28,24,lmx,lmy) then
+                    local p=fpath:match("(.+)/[^/]+$") or "/"
+                    fpath=p; fsel=-1; dirty=true
+                end
+                -- File/folder rows
+                local ry=cy+68
+                for i,f in ipairs(fitems) do
+                    if hit(cx+4,ry,cw-8,30,lmx,lmy) then
+                        local dbl = is_dblclick(i)
+                        if dbl then
+                            -- Double click: open folder or file
+                            if f.is_dir then
+                                fpath=f.full; fsel=-1
+                            else
+                                open_file(f.full, f.name)
+                            end
+                        else
+                            -- Single click: select
+                            fsel=i
+                        end
+                        dirty=true
+                        break
+                    end
+                    ry=ry+34
+                end
+            end
+            -- Notepad clicks
+            if view=="note" then
+                local cx,cy=SW,TH
+                local cw,ch=W-SW-RP,H-TH
+                -- Back button
+                if hit(cx+8,cy+4,28,24,lmx,lmy) then
+                    view="files"; dirty=true
+                -- Scroll: click upper half = up, lower half = down
+                elseif hit(cx,cy+36,cw,ch-36,lmx,lmy) then
+                    local mid = cy + 36 + (ch-36)/2
+                    if lmy < mid then
+                        note_scroll = note_scroll - 10
+                    else
+                        note_scroll = note_scroll + 10
+                    end
+                    dirty=true
+                end
             end
             -- Chat send button
             if view=="chat" then
