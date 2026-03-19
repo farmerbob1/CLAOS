@@ -88,7 +88,7 @@ static int l_mem_total(lua_State* L) {
 /* ─── claos.read(path) → string or nil ─── */
 static int l_read(lua_State* L) {
     const char* path = luaL_checkstring(L, 1);
-    static char buf[4096];
+    static char buf[16384];  /* 16KB — enough for GUI scripts */
     int len = chaosfs_read(path, buf, sizeof(buf));
     if (len >= 0) {
         lua_pushlstring(L, buf, len);
@@ -185,6 +185,9 @@ static int l_gui_clear(lua_State* L) { fb_clear((uint32_t)luaL_checkinteger(L,1)
 static int l_gui_pixel(lua_State* L) { fb_pixel((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(uint32_t)luaL_checkinteger(L,3)); return 0; }
 static int l_gui_rect(lua_State* L) { fb_rect((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); return 0; }
 static int l_gui_rect_outline(lua_State* L) { fb_rect_outline((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); return 0; }
+static int l_gui_rounded_rect(lua_State* L) { fb_rounded_rect((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(int)luaL_checkinteger(L,5),(uint32_t)luaL_checkinteger(L,6)); return 0; }
+static int l_gui_hline(lua_State* L) { fb_hline((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
+static int l_gui_vline(lua_State* L) { fb_vline((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
 static int l_gui_line(lua_State* L) { fb_line((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(int)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); return 0; }
 static int l_gui_circle(lua_State* L) { fb_circle((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
 static int l_gui_circle_filled(lua_State* L) { fb_circle_filled((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
@@ -226,7 +229,8 @@ static int l_gui_activate(lua_State* L) {
 static const luaL_Reg gui_funcs[] = {
     {"width",l_gui_width},{"height",l_gui_height},{"active",l_gui_active},
     {"clear",l_gui_clear},{"pixel",l_gui_pixel},{"rect",l_gui_rect},
-    {"rect_outline",l_gui_rect_outline},{"line",l_gui_line},
+    {"rect_outline",l_gui_rect_outline},{"rounded_rect",l_gui_rounded_rect},
+    {"hline",l_gui_hline},{"vline",l_gui_vline},{"line",l_gui_line},
     {"circle",l_gui_circle},{"circle_filled",l_gui_circle_filled},
     {"text",l_gui_text},{"swap",l_gui_swap},{"rgb",l_gui_rgb},
     {"poll_event",l_gui_poll_event},{"mouse_x",l_gui_mouse_x},{"mouse_y",l_gui_mouse_y},
@@ -312,7 +316,7 @@ int lua_run_file(const char* path) {
     }
 
     /* Read the file */
-    static char script_buf[8192];
+    static char script_buf[16384];
     int len = chaosfs_read(path, script_buf, sizeof(script_buf) - 1);
     if (len < 0) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);

@@ -54,7 +54,7 @@ struct chaosfs_entry {
     uint32_t start_block;       /* First block in data region */
     uint32_t block_count;       /* Number of contiguous blocks */
     uint8_t  flags;             /* CHAOSFS_FLAG_* */
-    uint8_t  reserved[3];       /* Padding to 128 bytes */
+    uint8_t  reserved[7];       /* Padding to 128 bytes */
 } __attribute__((packed));
 
 /* Initialize and mount ChaosFS. Returns true if valid FS found. */

@@ -68,6 +68,9 @@ void fb_rect(int x, int y, int w, int h, uint32_t color);
 /* Draw a rectangle outline */
 void fb_rect_outline(int x, int y, int w, int h, uint32_t color);
 
+/* Draw a filled rounded rectangle */
+void fb_rounded_rect(int x, int y, int w, int h, int r, uint32_t color);
+
 /* Optimized horizontal line */
 void fb_hline(int x, int y, int w, uint32_t color);
 

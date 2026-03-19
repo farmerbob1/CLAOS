@@ -28,6 +28,9 @@
 #include "chaosfs.h"
 #include "claos_lib.h"
 #include "fb.h"
+#include "input.h"
+#include "mouse.h"
+#include "console.h"
 
 /* Shell input buffer */
 #define SHELL_BUF_SIZE 1024
@@ -599,37 +602,20 @@ void shell_run(void) {
             } else {
                 vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
                 vga_print("  Launching GUI...\n");
-                /* Try to run the GUI init script */
-                lua_run_string("if claos.gui.activate() then\n"
-                    "  local ok, err = pcall(function()\n"
-                    "    local f = claos.read('/system/gui/init.lua')\n"
-                    "    if f then load(f)()\n"
-                    "    else\n"
-                    "      -- No init.lua yet, run a simple test\n"
-                    "      local g = claos.gui\n"
-                    "      g.clear(g.rgb(30, 30, 40))\n"
-                    "      g.rect(100, 100, 300, 200, g.rgb(60, 60, 80))\n"
-                    "      g.text(120, 130, 'CLAOS GUI Active', g.WHITE, g.rgb(60,60,80))\n"
-                    "      g.text(120, 160, 'Mouse and keyboard events ready', g.GREY, g.rgb(60,60,80))\n"
-                    "      g.text(120, 190, 'Press ESC to return to text mode', g.GREY, g.rgb(60,60,80))\n"
-                    "      g.swap()\n"
-                    "      -- Simple event loop\n"
-                    "      while true do\n"
-                    "        local ev = g.poll_event()\n"
-                    "        if ev then\n"
-                    "          if ev.type == g.KEY_DOWN and ev.key == 27 then break end\n"
-                    "          if ev.type == g.MOUSE_MOVE then\n"
-                    "            g.rect(0, 0, g.width(), 16, g.rgb(30,30,40))\n"
-                    "            g.text(4, 0, 'Mouse: '..ev.x..','..ev.y, g.WHITE, g.rgb(30,30,40))\n"
-                    "            g.swap()\n"
-                    "          end\n"
-                    "        end\n"
-                    "        claos.sleep(10)\n"
-                    "      end\n"
-                    "    end\n"
-                    "  end)\n"
-                    "  if not ok then print('GUI error: '..tostring(err)) end\n"
-                    "end");
+                /* Activate VESA mode from C */
+                if (!fb_activate()) {
+                    vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                    vga_print("  Failed to activate VESA mode.\n");
+                } else {
+                    const fb_info_t* info = fb_get_info();
+                    mouse_set_bounds(info->width, info->height);
+                    input_set_gui_mode(true);
+                    /* Run the GUI script — errors print to serial + VGA */
+                    lua_run_file("/system/gui/init.lua");
+                    /* If script returns (ESC pressed), switch back to text mode */
+                    input_set_gui_mode(false);
+                    vga_set_framebuffer_mode(false);
+                }
             }
         } else if (strcmp(line, "panic") == 0) {
             extern void kernel_panic(const char* message);

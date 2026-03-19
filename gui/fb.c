@@ -251,6 +251,51 @@ void fb_rect_outline(int x, int y, int w, int h, uint32_t color) {
     fb_vline(x + w - 1, y, h, color);      /* Right */
 }
 
+void fb_rounded_rect(int x, int y, int w, int h, int r, uint32_t color) {
+    if (!fb.active) return;
+    if (r > w / 2) r = w / 2;
+    if (r > h / 2) r = h / 2;
+
+    /* Center rectangle (no corners) */
+    fb_rect(x + r, y, w - 2 * r, h, color);
+    /* Left strip */
+    fb_rect(x, y + r, r, h - 2 * r, color);
+    /* Right strip */
+    fb_rect(x + w - r, y + r, r, h - 2 * r, color);
+
+    /* Four corner circles (filled quarter circles via midpoint) */
+    int cx, cy;
+    int px = r, py = 0;
+    int err = 1 - r;
+
+    while (px >= py) {
+        /* Top-left corner */
+        cx = x + r; cy = y + r;
+        fb_hline(cx - px, cy - py, px, color);
+        fb_hline(cx - py, cy - px, py, color);
+        /* Top-right corner */
+        cx = x + w - r - 1; cy = y + r;
+        fb_hline(cx + 1, cy - py, px, color);
+        fb_hline(cx + 1, cy - px, py, color);
+        /* Bottom-left corner */
+        cx = x + r; cy = y + h - r - 1;
+        fb_hline(cx - px, cy + py, px, color);
+        fb_hline(cx - py, cy + px, py, color);
+        /* Bottom-right corner */
+        cx = x + w - r - 1; cy = y + h - r - 1;
+        fb_hline(cx + 1, cy + py, px, color);
+        fb_hline(cx + 1, cy + px, py, color);
+
+        py++;
+        if (err < 0) {
+            err += 2 * py + 1;
+        } else {
+            px--;
+            err += 2 * (py - px) + 1;
+        }
+    }
+}
+
 void fb_line(int x0, int y0, int x1, int y1, uint32_t color) {
     if (!fb.active) return;
 

@@ -63,12 +63,16 @@ static int chaosfs_sync(void) {
 /* Find a file entry by path. Returns index or -1. */
 static int chaosfs_find(const char* path) {
     for (int i = 0; i < CHAOSFS_MAX_FILES; i++) {
-        if (!(file_table[i].flags & CHAOSFS_FLAG_DELETED) &&
-            file_table[i].filename[0] != '\0' &&
-            strcmp(file_table[i].filename, path) == 0) {
+        if (file_table[i].filename[0] == '\0') continue;
+        if (file_table[i].flags & CHAOSFS_FLAG_DELETED) continue;
+        if (strcmp(file_table[i].filename, path) == 0) {
             return i;
         }
     }
+    /* Debug: log failed lookups */
+    serial_print("[ChaosFS] File not found: ");
+    serial_print(path);
+    serial_print("\n");
     return -1;
 }
 
