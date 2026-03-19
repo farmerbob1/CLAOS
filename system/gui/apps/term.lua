@@ -1,0 +1,106 @@
+-- CLAOS Terminal App (uses shared widgets)
+local g = claos.gui
+local FW, FH = 8, 16
+
+return {
+    name = "term", title = "Terminal", icon = "T",
+    w = 520, h = 380, min_w = 320, min_h = 200,
+
+    on_open = function(s)
+        s.lines = {"CLAOS Terminal v0.8", "Type commands. help for list.", ""}
+        s.sv = WIDGETS.ScrollView.new({})
+
+        s.input = WIDGETS.TextField.new({
+            placeholder = "",
+            on_enter = function(text)
+                if #text == 0 then return end
+                s.lines[#s.lines+1] = "claos> " .. text
+                s.input:set_text("")
+                local cmd = text
+
+                if cmd == "help" then
+                    s.lines[#s.lines+1] = "Commands: help sysinfo uptime ls clear"
+                elseif cmd == "clear" then
+                    s.lines = {""}
+                elseif cmd == "sysinfo" then
+                    local mt = claos.mem_total(); local mf = claos.mem_free()
+                    s.lines[#s.lines+1] = string.format("Mem: %dMB total, %dMB free",
+                        math.floor(mt/1048576), math.floor(mf/1048576))
+                    s.lines[#s.lines+1] = "Up: " .. claos.uptime() .. "s"
+                elseif cmd == "uptime" then
+                    s.lines[#s.lines+1] = claos.uptime() .. "s"
+                elseif cmd == "ls" or cmd:sub(1,3) == "ls " then
+                    local path = #cmd > 3 and cmd:sub(4) or "/"
+                    local fs = claos.ls(path)
+                    if fs then for _, f in ipairs(fs) do
+                        s.lines[#s.lines+1] = (f.is_dir and "d " or "  ") .. f.name
+                    end else s.lines[#s.lines+1] = "ls: not found" end
+                else
+                    s.lines[#s.lines+1] = "Asking Claude..."
+                    local ok, r = pcall(claos.ask, cmd)
+                    if ok and r then
+                        for line in (r.."\n"):gmatch("([^\n]*)\n") do
+                            s.lines[#s.lines+1] = line
+                        end
+                    else
+                        s.lines[#s.lines+1] = ok and "(no response)" or ("Error: "..tostring(r))
+                    end
+                end
+                s.lines[#s.lines+1] = ""
+                s.sv:scroll_to_bottom()
+            end,
+        })
+        s.input:focus()
+    end,
+
+    on_draw = function(s, x, y, w, h)
+        local tbg = g.rgb(16,16,24)
+        local fg = g.rgb(80,220,80)
+        g.rect(x, y, w, h, tbg)
+        s._w = w; s._h = h
+
+        -- Output area
+        local out_h = h - 30
+        s.sv.content_h = #s.lines * FH
+        s.sv.view_h = out_h
+        s.sv:clamp()
+
+        local first = math.floor(s.sv.scroll / FH) + 1
+        local visible = math.floor(out_h / FH) + 1
+        for i = first, math.min(#s.lines, first + visible) do
+            local ly = y + 2 + (i-1)*FH - s.sv.scroll
+            if ly + FH > y and ly < y + out_h then
+                g.text(x+8, ly, s.lines[i], fg, tbg)
+            end
+        end
+
+        s.sv:draw_scrollbar(x, y, w, out_h)
+
+        -- Prompt
+        g.rect(x, y+h-28, w, 28, g.rgb(12,12,20))
+        g.hline(x, y+h-28, w, g.rgb(40,80,40))
+        g.text(x+4, y+h-22, ">", fg, g.rgb(12,12,20))
+        s.input:draw(x+14, y+h-26, w-20, 24)
+    end,
+
+    on_key = function(s, key)
+        s.input:handle_key(key)
+    end,
+
+    on_click = function(s, rx, ry, btn)
+        local h = s._h or 380
+        if ry >= h-30 then
+            s.input:handle_click(rx - 14)
+        else
+            s.sv:handle_click(ry, h-30)
+        end
+    end,
+
+    on_mouse_move = function(s, rx, ry)
+        s.input:handle_mouse_move(rx - 14)
+    end,
+
+    on_mouse_up = function(s)
+        s.input:handle_mouse_up()
+    end,
+}

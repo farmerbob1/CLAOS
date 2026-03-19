@@ -88,7 +88,7 @@ static int l_mem_total(lua_State* L) {
 /* ─── claos.read(path) → string or nil ─── */
 static int l_read(lua_State* L) {
     const char* path = luaL_checkstring(L, 1);
-    static char buf[32768];  /* 32KB — GUI scripts can be large */
+    static char buf[131072];  /* 128KB */
     int len = chaosfs_read(path, buf, sizeof(buf));
     if (len >= 0) {
         lua_pushlstring(L, buf, len);
@@ -166,6 +166,54 @@ static int l_input(lua_State* L) {
     return 1;
 }
 
+/* ─── claos.cpu() → percentage (0-100) ─── */
+static int l_cpu(lua_State* L) {
+    lua_pushinteger(L, scheduler_get_cpu_usage());
+    return 1;
+}
+
+/* ─── claos.reboot() — triple-fault reboot ─── */
+static int l_reboot(lua_State* L) {
+    (void)L;
+    serial_print("[CLAOS] Rebooting via triple fault...\n");
+    struct idt_ptr { uint16_t limit; uint32_t base; } __attribute__((packed));
+    struct idt_ptr null_idt = {0, 0};
+    __asm__ volatile ("lidt %0" : : "m"(null_idt));
+    __asm__ volatile ("int $0x03");
+    return 0;  /* never reached */
+}
+
+/* ─── claos.shutdown() — ACPI/QEMU shutdown ─── */
+static int l_shutdown(lua_State* L) {
+    (void)L;
+    serial_print("[CLAOS] Shutting down...\n");
+    /* QEMU ACPI shutdown (Bochs/QEMU specific) */
+    outw(0x604, 0x2000);
+    /* Fallback: older QEMU/Bochs shutdown port */
+    outw(0xB004, 0x2000);
+    /* If still alive, halt */
+    __asm__ volatile ("cli; hlt");
+    return 0;
+}
+
+/* ─── claos.disk() → {total_kb, used_kb, free_kb, files, block_size} ─── */
+static int l_disk(lua_State* L) {
+    uint32_t total_blocks, used_blocks, file_count, block_size;
+    chaosfs_disk_stats(&total_blocks, &used_blocks, &file_count, &block_size);
+    lua_createtable(L, 0, 5);
+    lua_pushinteger(L, (lua_Integer)total_blocks * (block_size / 1024));
+    lua_setfield(L, -2, "total_kb");
+    lua_pushinteger(L, (lua_Integer)used_blocks * (block_size / 1024));
+    lua_setfield(L, -2, "used_kb");
+    lua_pushinteger(L, (lua_Integer)(total_blocks - used_blocks) * (block_size / 1024));
+    lua_setfield(L, -2, "free_kb");
+    lua_pushinteger(L, file_count);
+    lua_setfield(L, -2, "files");
+    lua_pushinteger(L, block_size);
+    lua_setfield(L, -2, "block_size");
+    return 1;
+}
+
 /* Library function table */
 static const luaL_Reg claos_funcs[] = {
     {"ask",       l_ask},
@@ -180,6 +228,10 @@ static const luaL_Reg claos_funcs[] = {
     {"set_color", l_set_color},
     {"clear",     l_clear},
     {"input",     l_input},
+    {"disk",      l_disk},
+    {"cpu",       l_cpu},
+    {"reboot",    l_reboot},
+    {"shutdown",  l_shutdown},
     {NULL, NULL}
 };
 
@@ -198,6 +250,8 @@ static int l_gui_line(lua_State* L) { fb_line((int)luaL_checkinteger(L,1),(int)l
 static int l_gui_circle(lua_State* L) { fb_circle((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
 static int l_gui_circle_filled(lua_State* L) { fb_circle_filled((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3),(uint32_t)luaL_checkinteger(L,4)); return 0; }
 static int l_gui_text(lua_State* L) { int w = fb_text((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),luaL_checkstring(L,3),(uint32_t)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); lua_pushinteger(L,w); return 1; }
+static int l_gui_text_bold(lua_State* L) { int w = fb_text_bold((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),luaL_checkstring(L,3),(uint32_t)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); lua_pushinteger(L,w); return 1; }
+static int l_gui_text_2x(lua_State* L) { int w = fb_text_2x((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),luaL_checkstring(L,3),(uint32_t)luaL_checkinteger(L,4),(uint32_t)luaL_checkinteger(L,5)); lua_pushinteger(L,w); return 1; }
 static int l_gui_swap(lua_State* L) { (void)L; fb_swap(); return 0; }
 static int l_gui_rgb(lua_State* L) { lua_pushinteger(L,(lua_Integer)(int32_t)FB_RGB((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3))); return 1; }
 
@@ -238,7 +292,8 @@ static const luaL_Reg gui_funcs[] = {
     {"rect_outline",l_gui_rect_outline},{"rounded_rect",l_gui_rounded_rect},
     {"hline",l_gui_hline},{"vline",l_gui_vline},{"line",l_gui_line},
     {"circle",l_gui_circle},{"circle_filled",l_gui_circle_filled},
-    {"text",l_gui_text},{"swap",l_gui_swap},{"rgb",l_gui_rgb},
+    {"text",l_gui_text},{"text_bold",l_gui_text_bold},{"text_2x",l_gui_text_2x},
+    {"swap",l_gui_swap},{"rgb",l_gui_rgb},
     {"poll_event",l_gui_poll_event},{"mouse_x",l_gui_mouse_x},{"mouse_y",l_gui_mouse_y},
     {"activate",l_gui_activate},{NULL,NULL}
 };
@@ -268,6 +323,18 @@ void claos_lua_register(lua_State* L) {
     lua_pushinteger(L, EVENT_MOUSE_MOVE); lua_setfield(L,-2,"MOUSE_MOVE");
     lua_pushinteger(L, EVENT_MOUSE_DOWN); lua_setfield(L,-2,"MOUSE_DOWN");
     lua_pushinteger(L, EVENT_MOUSE_UP);   lua_setfield(L,-2,"MOUSE_UP");
+    /* Special key constants */
+    lua_pushinteger(L, KEY_ARROW_UP);    lua_setfield(L,-2,"K_UP");
+    lua_pushinteger(L, KEY_ARROW_DOWN);  lua_setfield(L,-2,"K_DOWN");
+    lua_pushinteger(L, KEY_ARROW_LEFT);  lua_setfield(L,-2,"K_LEFT");
+    lua_pushinteger(L, KEY_ARROW_RIGHT); lua_setfield(L,-2,"K_RIGHT");
+    lua_pushinteger(L, KEY_HOME);        lua_setfield(L,-2,"K_HOME");
+    lua_pushinteger(L, KEY_END);         lua_setfield(L,-2,"K_END");
+    lua_pushinteger(L, KEY_DELETE);       lua_setfield(L,-2,"K_DELETE");
+    lua_pushinteger(L, KEY_PAGE_UP);     lua_setfield(L,-2,"K_PGUP");
+    lua_pushinteger(L, KEY_PAGE_DOWN);   lua_setfield(L,-2,"K_PGDN");
+    lua_pushinteger(L, KEY_MOD_CTRL);    lua_setfield(L,-2,"K_CTRL");
+    lua_pushinteger(L, KEY_MOD_SHIFT);   lua_setfield(L,-2,"K_SHIFT");
     lua_setfield(L, -2, "gui");
 
     lua_setglobal(L, "claos");
@@ -322,7 +389,7 @@ int lua_run_file(const char* path) {
     }
 
     /* Read the file */
-    static char script_buf[32768];
+    static char script_buf[131072];  /* 128KB */
     int len = chaosfs_read(path, script_buf, sizeof(script_buf) - 1);
     if (len < 0) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);

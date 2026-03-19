@@ -408,3 +408,62 @@ int fb_text_width(const char* str) {
     }
     return w;
 }
+
+int fb_text_bold(int x, int y, const char* str, uint32_t fg, uint32_t bg) {
+    /* Faux bold: render normally, then overlay with 1px offset (no bg on second pass) */
+    int w = fb_text(x, y, str, fg, bg);
+    /* Second pass: only write fg pixels at x+1 (skip bg to avoid overwriting) */
+    if (!fb.active) return w;
+    int ox = x + 1;
+    const char* s = str;
+    while (*s) {
+        if (*s == '\n') { y += FONT_HEIGHT; ox = x + 1; }
+        else {
+            const uint8_t* glyph = font_8x16[(uint8_t)*s];
+            for (int row = 0; row < FONT_HEIGHT; row++) {
+                int py = y + row;
+                if (py < 0 || py >= fb.height) continue;
+                uint8_t bits = glyph[row];
+                for (int col = 0; col < FONT_WIDTH; col++) {
+                    if (bits & (0x80 >> col)) {
+                        int px = ox + col;
+                        if (px >= 0 && px < fb.width)
+                            fb.backbuffer[py * fb.width + px] = fg;
+                    }
+                }
+            }
+            ox += FONT_WIDTH;
+        }
+        s++;
+    }
+    return w;
+}
+
+int fb_text_2x(int x, int y, const char* str, uint32_t fg, uint32_t bg) {
+    if (!fb.active) return 0;
+    int start_x = x;
+    while (*str) {
+        if (*str == '\n') { y += FONT_HEIGHT * 2; x = start_x; }
+        else {
+            const uint8_t* glyph = font_8x16[(uint8_t)*str];
+            for (int row = 0; row < FONT_HEIGHT; row++) {
+                int py = y + row * 2;
+                uint8_t bits = glyph[row];
+                for (int col = 0; col < FONT_WIDTH; col++) {
+                    uint32_t color = (bits & (0x80 >> col)) ? fg : bg;
+                    int px = x + col * 2;
+                    /* Draw 2x2 pixel block */
+                    if (py >= 0 && py+1 < fb.height && px >= 0 && px+1 < fb.width) {
+                        fb.backbuffer[py * fb.width + px] = color;
+                        fb.backbuffer[py * fb.width + px + 1] = color;
+                        fb.backbuffer[(py+1) * fb.width + px] = color;
+                        fb.backbuffer[(py+1) * fb.width + px + 1] = color;
+                    }
+                }
+            }
+            x += FONT_WIDTH * 2;
+        }
+        str++;
+    }
+    return x - start_x;
+}

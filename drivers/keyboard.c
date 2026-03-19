@@ -51,6 +51,23 @@ static volatile int kb_tail = 0;     /* Read position */
 
 /* Modifier key state */
 static volatile bool shift_held = false;
+static volatile bool ctrl_held = false;
+
+/* Map scancodes to special key codes (arrow keys, Home, End, etc.) */
+static uint16_t scancode_to_special(uint8_t scancode) {
+    switch (scancode) {
+        case 0x48: return KEY_ARROW_UP;
+        case 0x50: return KEY_ARROW_DOWN;
+        case 0x4B: return KEY_ARROW_LEFT;
+        case 0x4D: return KEY_ARROW_RIGHT;
+        case 0x47: return KEY_HOME;
+        case 0x4F: return KEY_END;
+        case 0x53: return KEY_DELETE;
+        case 0x49: return KEY_PAGE_UP;
+        case 0x51: return KEY_PAGE_DOWN;
+        default:   return 0;
+    }
+}
 
 /* Called from our IRQ1 handler (see irq.c) */
 void keyboard_handler(void) {
@@ -58,17 +75,36 @@ void keyboard_handler(void) {
 
     /* Key release events have bit 7 set */
     if (scancode & 0x80) {
-        /* Key released */
         uint8_t released = scancode & 0x7F;
         /* Left shift = 0x2A, Right shift = 0x36 */
         if (released == 0x2A || released == 0x36)
             shift_held = false;
+        /* Left Ctrl = 0x1D */
+        if (released == 0x1D)
+            ctrl_held = false;
         return;
     }
 
-    /* Track shift state */
+    /* Track modifier state */
     if (scancode == 0x2A || scancode == 0x36) {
         shift_held = true;
+        return;
+    }
+    if (scancode == 0x1D) {
+        ctrl_held = true;
+        return;
+    }
+
+    /* Check for special keys (arrows, home, end, delete, etc.) */
+    uint16_t special = scancode_to_special(scancode);
+    if (special) {
+        if (input_is_gui_mode()) {
+            uint16_t key = special;
+            if (ctrl_held)  key |= KEY_MOD_CTRL;
+            if (shift_held) key |= KEY_MOD_SHIFT;
+            input_event_t ev = { EVENT_KEY_DOWN, key, 0, 0, 0 };
+            input_push(&ev);
+        }
         return;
     }
 
@@ -83,7 +119,14 @@ void keyboard_handler(void) {
     if (c != 0) {
         if (input_is_gui_mode()) {
             /* GUI mode: push to event queue for Lua */
-            input_event_t ev = { EVENT_KEY_DOWN, (uint16_t)c, 0, 0, 0 };
+            uint16_t key = (uint16_t)(uint8_t)c;
+            if (ctrl_held)  key |= KEY_MOD_CTRL;
+            if (shift_held && c >= 'a' && c <= 'z') {
+                /* Shift already handled by scancode_ascii_shift for printable chars,
+                 * but add flag for special handling (e.g., shift+arrow = select) */
+            }
+            if (shift_held) key |= KEY_MOD_SHIFT;
+            input_event_t ev = { EVENT_KEY_DOWN, key, 0, 0, 0 };
             input_push(&ev);
         } else {
             /* Text mode: add to keyboard line buffer */

@@ -28,6 +28,12 @@ static int current_task = -1;       /* Index of the currently running task */
 static int task_count = 0;
 static bool scheduler_enabled = false;
 
+/* CPU usage tracking: rolling window of 100 ticks */
+#define CPU_WINDOW 100
+static uint32_t cpu_busy_count = 0;     /* busy ticks in current window */
+static uint32_t cpu_tick_count = 0;     /* total ticks in current window */
+static int cpu_usage_pct = 0;           /* last computed percentage */
+
 /* Defined in scheduler_asm.asm */
 extern void task_switch(uint32_t* old_esp, uint32_t new_esp);
 
@@ -131,6 +137,22 @@ void schedule(void) {
         }
     }
 
+    /* CPU usage: count how many non-current tasks are ready (= work to do) */
+    cpu_tick_count++;
+    int ready_count = 0;
+    for (int i = 0; i < MAX_TASKS; i++) {
+        if (i != current_task && tasks[i].state == TASK_READY)
+            ready_count++;
+    }
+    /* If any other task is ready, CPU is busy (doing real work, not just sleeping) */
+    if (ready_count > 0) cpu_busy_count++;
+
+    if (cpu_tick_count >= CPU_WINDOW) {
+        cpu_usage_pct = (int)(cpu_busy_count * 100 / cpu_tick_count);
+        cpu_busy_count = 0;
+        cpu_tick_count = 0;
+    }
+
     /* Find the next ready task (round-robin) */
     int old = current_task;
     int next = current_task;
@@ -185,4 +207,8 @@ void task_sleep(uint32_t ms) {
 
 void task_yield(void) {
     schedule();
+}
+
+int scheduler_get_cpu_usage(void) {
+    return cpu_usage_pct;
 }

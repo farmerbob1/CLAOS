@@ -60,4 +60,7 @@ void task_sleep(uint32_t ms);
 /* Yield the current task's time slice */
 void task_yield(void);
 
+/* Get CPU usage percentage (0-100) over recent window */
+int scheduler_get_cpu_usage(void);
+
 #endif /* CLAOS_SCHEDULER_H */

@@ -95,6 +95,12 @@ int fb_text(int x, int y, const char* str, uint32_t fg, uint32_t bg);
 /* Get pixel width of a string */
 int fb_text_width(const char* str);
 
+/* Draw bold text (renders twice with 1px offset for faux bold) */
+int fb_text_bold(int x, int y, const char* str, uint32_t fg, uint32_t bg);
+
+/* Draw 2x scaled text (each pixel doubled — 16x32 per char) */
+int fb_text_2x(int x, int y, const char* str, uint32_t fg, uint32_t bg);
+
 /* Color helpers — ARGB format (alpha in high byte) */
 #define FB_RGB(r, g, b)       ((uint32_t)(0xFF000000 | ((r) << 16) | ((g) << 8) | (b)))
 #define FB_ARGB(a, r, g, b)   ((uint32_t)(((a) << 24) | ((r) << 16) | ((g) << 8) | (b)))

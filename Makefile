@@ -159,6 +159,18 @@ claos.img: boot/stage1.bin boot/stage2.bin kernel.bin
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /logs; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /scripts/hello.lua "print('Hello from Lua on CLAOS!')\nprint('Uptime: ' .. claos.uptime() .. 's')"; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /scripts/chat.lua "print('CLAOS Lua Chat — type quit to exit')\nwhile true do\n  io.write('You: ')\n  local msg = claos.input('You: ')\n  if msg == 'quit' then break end\n  local resp = claos.ask(msg)\n  if resp then print('Claude: ' .. resp) end\nend"; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /docs; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /docs/readme.txt "CLAOS - Claude Assisted Operating System"; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system/gui; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system/gui/apps; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/widgets.lua system/gui/widgets.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/init.lua system/gui/init.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/chat.lua system/gui/apps/chat.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/term.lua system/gui/apps/term.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/monitor.lua system/gui/apps/monitor.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/files.lua system/gui/apps/files.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/notepad.lua system/gui/apps/notepad.lua; \
 	fi
 	@# Write bootloader + kernel to the start of the disk (preserves ChaosFS at sector 2048+)
 	dd if=boot/stage1.bin of=claos.img bs=512 conv=notrunc 2>/dev/null
@@ -172,6 +184,29 @@ claos.img: boot/stage1.bin boot/stage2.bin kernel.bin
 newdisk:
 	rm -f claos.img
 	$(MAKE) claos.img
+
+# Update GUI files on ChaosFS (reformats filesystem, re-adds all files)
+.PHONY: gui
+gui: claos.img
+	@echo "=== Updating GUI files on ChaosFS ==="
+	/c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --format
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /welcome.txt "Welcome to CLAOS! Type help for commands, or just talk to Claude."
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /scripts
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /logs
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /docs
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /scripts/hello.lua "print('Hello from Lua on CLAOS!')\nprint('Uptime: ' .. claos.uptime() .. 's')"
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --add /docs/readme.txt "CLAOS - Claude Assisted Operating System"
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system/gui
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system/gui/apps
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/widgets.lua system/gui/widgets.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/init.lua system/gui/init.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/chat.lua system/gui/apps/chat.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/term.lua system/gui/apps/term.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/monitor.lua system/gui/apps/monitor.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/files.lua system/gui/apps/files.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/notepad.lua system/gui/apps/notepad.lua
+	@echo "=== GUI files updated ==="
 
 # Run in QEMU with e1000 NIC
 run: claos.img

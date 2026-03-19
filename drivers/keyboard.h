@@ -11,6 +11,21 @@
 /* Size of the keyboard input buffer */
 #define KB_BUFFER_SIZE 256
 
+/* Special key codes (>= 256, fit in uint16_t for input events) */
+#define KEY_ARROW_UP     0x100
+#define KEY_ARROW_DOWN   0x101
+#define KEY_ARROW_LEFT   0x102
+#define KEY_ARROW_RIGHT  0x103
+#define KEY_HOME         0x104
+#define KEY_END          0x105
+#define KEY_DELETE        0x106
+#define KEY_PAGE_UP      0x107
+#define KEY_PAGE_DOWN    0x108
+
+/* Modifier flags (ORed into key code bits 12-15) */
+#define KEY_MOD_CTRL     0x1000
+#define KEY_MOD_SHIFT    0x2000
+
 /* Initialize the keyboard driver (registers IRQ1 handler) */
 void keyboard_init(void);
 
