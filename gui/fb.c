@@ -82,15 +82,30 @@ bool fb_is_active(void) {
 void fb_swap(void) {
     if (!fb.active) return;
 
-    /* Pitch-aware copy: framebuffer pitch may differ from width*4 */
-    uint32_t row_pixels = fb.width;
     uint8_t* dst = (uint8_t*)fb.framebuffer;
     uint32_t* src = fb.backbuffer;
 
-    for (int y = 0; y < fb.height; y++) {
-        memcpy32(dst, src, row_pixels);
-        dst += fb.pitch;
-        src += row_pixels;
+    if (fb.bpp == 32) {
+        /* 32bpp: direct 4-byte pixel copy */
+        for (int y = 0; y < fb.height; y++) {
+            memcpy32(dst, src, fb.width);
+            dst += fb.pitch;
+            src += fb.width;
+        }
+    } else if (fb.bpp == 24) {
+        /* 24bpp: convert each 32-bit ARGB pixel to 3-byte BGR */
+        for (int y = 0; y < fb.height; y++) {
+            uint8_t* row_dst = dst;
+            for (int x = 0; x < fb.width; x++) {
+                uint32_t pixel = src[x];
+                row_dst[0] = (uint8_t)(pixel);        /* B */
+                row_dst[1] = (uint8_t)(pixel >> 8);    /* G */
+                row_dst[2] = (uint8_t)(pixel >> 16);   /* R */
+                row_dst += 3;
+            }
+            dst += fb.pitch;
+            src += fb.width;
+        }
     }
 }
 

@@ -17,7 +17,9 @@ stage2_start:
     mov si, msg_stage2
     call print_string_rm
 
+    ; Detect and set VESA mode (VGA BIOS is ready after print_string_rm used INT 10h)
     call detect_vbe
+
     call detect_memory
 
     call enable_a20
@@ -244,13 +246,20 @@ detect_vbe:
     int 0x10
     pop es
     cmp ax, 0x004F
-    jne .vfb
+    jne .vtry2
+
+    ; Accept 32bpp or 24bpp
     cmp byte [0x9200 + 25], 32
-    jne .vfb
+    je .vmode_ok
+    cmp byte [0x9200 + 25], 24
+    je .vmode_ok
+    jmp .vtry2
+
+.vmode_ok:
     mov bx, 0x4118
     jmp .vset
 
-.vfb:
+.vtry2:
     push es
     xor ax, ax
     mov es, ax
@@ -262,7 +271,11 @@ detect_vbe:
     cmp ax, 0x004F
     jne .vdone
     cmp byte [0x9200 + 25], 32
-    jne .vdone
+    je .vfb_ok
+    cmp byte [0x9200 + 25], 24
+    je .vfb_ok
+    jmp .vdone
+.vfb_ok:
     mov bx, 0x4115
 
 .vset:
