@@ -10,6 +10,43 @@ return {
         s.lines = {"CLAOS Terminal v0.8", "Type commands. help for list.", ""}
         s.sv = WIDGETS.ScrollView.new({})
 
+        -- Helper: run a Lua script file, capturing print output
+        s.run_script = function(path)
+            s.lines[#s.lines+1] = "Running: " .. path
+            s.lines[#s.lines+1] = ""
+            local src = claos.read(path)
+            if not src then
+                s.lines[#s.lines+1] = "Error: could not read " .. path
+                s.lines[#s.lines+1] = ""
+                return
+            end
+            local fn, err = load(src, path)
+            if not fn then
+                s.lines[#s.lines+1] = "Parse error: " .. tostring(err)
+                s.lines[#s.lines+1] = ""
+                return
+            end
+            -- Override print to capture into terminal
+            local old_print = print
+            print = function(...)
+                local parts = {}
+                for i = 1, select("#", ...) do
+                    parts[#parts+1] = tostring(select(i, ...))
+                end
+                local text = table.concat(parts, "\t")
+                for line in (text.."\n"):gmatch("([^\n]*)\n") do
+                    s.lines[#s.lines+1] = line
+                end
+            end
+            local ok, rerr = pcall(fn)
+            print = old_print
+            if not ok then
+                s.lines[#s.lines+1] = "Runtime error: " .. tostring(rerr)
+            end
+            s.lines[#s.lines+1] = ""
+            s.sv:scroll_to_bottom()
+        end
+
         s.input = WIDGETS.TextField.new({
             placeholder = "",
             on_enter = function(text)
@@ -19,7 +56,7 @@ return {
                 local cmd = text
 
                 if cmd == "help" then
-                    s.lines[#s.lines+1] = "Commands: help sysinfo uptime ls clear"
+                    s.lines[#s.lines+1] = "Commands: help sysinfo uptime ls clear run"
                 elseif cmd == "clear" then
                     s.lines = {""}
                 elseif cmd == "sysinfo" then
@@ -35,6 +72,9 @@ return {
                     if fs then for _, f in ipairs(fs) do
                         s.lines[#s.lines+1] = (f.is_dir and "d " or "  ") .. f.name
                     end else s.lines[#s.lines+1] = "ls: not found" end
+                elseif cmd:sub(1,4) == "run " then
+                    local path = cmd:sub(5)
+                    s.run_script(path)
                 else
                     s.lines[#s.lines+1] = "Asking Claude..."
                     local ok, r = pcall(claos.ask, cmd)
@@ -51,6 +91,11 @@ return {
             end,
         })
         s.input:focus()
+
+        -- Auto-run script if opened with params.run
+        if s.params and s.params.run then
+            s.run_script(s.params.run)
+        end
     end,
 
     on_draw = function(s, x, y, w, h)

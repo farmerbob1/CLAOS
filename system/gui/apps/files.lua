@@ -76,7 +76,12 @@ return {
                     s.list.scroll = 0
                 else
                     if WM and WM.open_with then
-                        WM.open_with("notepad", {path=item.full, name=item.name})
+                        local ext = item.name:match("%.(%w+)$") or ""
+                        if ext == "lua" then
+                            WM.open_with("term", {run=item.full, name=item.name})
+                        else
+                            WM.open_with("notepad", {path=item.full, name=item.name})
+                        end
                     end
                 end
             end,

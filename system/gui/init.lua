@@ -801,6 +801,13 @@ while run do
                                 items[#items+1] = {label="Open Folder", action=function()
                                     wm_open_with("files", {path=fi.full})
                                 end}
+                            elseif fi.name:match("%.lua$") then
+                                items[#items+1] = {label="Run Script", action=function()
+                                    wm_open_with("term", {run=fi.full, name=fi.name})
+                                end}
+                                items[#items+1] = {label="Edit Script", action=function()
+                                    wm_open_with("notepad", {path=fi.full, name=fi.name})
+                                end}
                             else
                                 items[#items+1] = {label="Open File", action=function()
                                     wm_open_with("notepad", {path=fi.full, name=fi.name})
@@ -879,6 +886,8 @@ while run do
                             if is_dblclick(1000+i) then
                                 if item.is_dir then
                                     wm_open_with("files", {path=item.full})
+                                elseif item.name:match("%.lua$") then
+                                    wm_open_with("term", {run=item.full, name=item.name})
                                 else
                                     wm_open_with("notepad", {path=item.full, name=item.name})
                                 end

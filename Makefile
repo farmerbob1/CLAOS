@@ -55,6 +55,7 @@ C_SOURCES = kernel/main.c \
             drivers/e1000.c \
             drivers/ata.c \
             drivers/mouse.c \
+            drivers/ac97.c \
             fs/chaosfs.c \
             net/ethernet.c \
             net/arp.c \
@@ -164,13 +165,15 @@ claos.img: boot/stage1.bin boot/stage2.bin kernel.bin
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system/gui; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /system/gui/apps; \
-		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/widgets.lua system/gui/widgets.lua
-	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/init.lua system/gui/init.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/widgets.lua system/gui/widgets.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/init.lua system/gui/init.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/chat.lua system/gui/apps/chat.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/term.lua system/gui/apps/term.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/monitor.lua system/gui/apps/monitor.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/files.lua system/gui/apps/files.lua; \
 		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/notepad.lua system/gui/apps/notepad.lua; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /tests; \
+		MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /tests/audio_test.lua tests/audio_test.lua; \
 	fi
 	@# Write bootloader + kernel to the start of the disk (preserves ChaosFS at sector 2048+)
 	dd if=boot/stage1.bin of=claos.img bs=512 conv=notrunc 2>/dev/null
@@ -206,6 +209,8 @@ gui: claos.img
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/monitor.lua system/gui/apps/monitor.lua
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/files.lua system/gui/apps/files.lua
 	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /system/gui/apps/notepad.lua system/gui/apps/notepad.lua
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --mkdir /tests
+	MSYS_NO_PATHCONV=1 /c/msys64/usr/bin/python3 tools/mkchaosfs.py claos.img --addfile /tests/audio_test.lua tests/audio_test.lua
 	@echo "=== GUI files updated ==="
 
 # Run in QEMU with e1000 NIC
@@ -214,6 +219,7 @@ run: claos.img
 		-drive format=raw,file=claos.img \
 		-device e1000,netdev=net0 \
 		-netdev user,id=net0 \
+		-device AC97 \
 		-m 128M \
 		-serial stdio
 
@@ -223,6 +229,7 @@ debug: claos.img
 		-drive format=raw,file=claos.img \
 		-device e1000,netdev=net0 \
 		-netdev user,id=net0 \
+		-device AC97 \
 		-m 128M \
 		-serial stdio \
 		-no-reboot \

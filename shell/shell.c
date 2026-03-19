@@ -528,7 +528,7 @@ static void cmd_reboot(void) {
 
 void shell_run(void) {
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.7 ready.\n");
+    vga_print("  CLAOS v0.8 ready.\n");
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  Type 'help' for commands, or just talk to Claude.\n\n");
 

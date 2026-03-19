@@ -35,6 +35,7 @@
 #include "claude.h"
 #include "ata.h"
 #include "chaosfs.h"
+#include "ac97.h"
 #include "claos_lib.h"
 #include "shell.h"
 #include "mouse.h"
@@ -148,7 +149,7 @@ static void print_banner(void) {
     vga_print("   ####  ######  ##  ##   ####   ####\n");
 
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("\n  Claude Assisted Operating System v0.7\n");
+    vga_print("\n  Claude Assisted Operating System v0.8\n");
 
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  ========================================\n");
@@ -328,6 +329,13 @@ void kernel_main(void) {
         }
     } else {
         boot_msg("ATA disk", "NOT FOUND (no storage)");
+    }
+
+    /* Step 15b: AC97 Audio */
+    if (ac97_init()) {
+        boot_msg("AC97 Audio", "OK");
+    } else {
+        boot_msg("AC97 Audio", "NOT FOUND");
     }
 
     /* Step 16: Lua scripting */

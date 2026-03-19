@@ -30,6 +30,7 @@
 #include "input.h"
 #include "mouse.h"
 #include "console.h"
+#include "ac97.h"
 
 /* Global Lua state */
 static lua_State* global_L = NULL;
@@ -214,6 +215,45 @@ static int l_disk(lua_State* L) {
     return 1;
 }
 
+/* ─── claos.audio.* — Sound functions ─── */
+
+static int l_audio_beep(lua_State* L) {
+    int freq = (int)luaL_checkinteger(L, 1);
+    int dur  = (int)luaL_checkinteger(L, 2);
+    ac97_play_tone((uint32_t)freq, (uint32_t)dur);
+    return 0;
+}
+
+static int l_audio_volume(lua_State* L) {
+    int level = (int)luaL_checkinteger(L, 1);
+    ac97_set_volume(level);
+    return 0;
+}
+
+static int l_audio_stop(lua_State* L) {
+    (void)L;
+    ac97_stop();
+    return 0;
+}
+
+static int l_audio_status(lua_State* L) {
+    lua_createtable(L, 0, 2);
+    lua_pushboolean(L, ac97_is_playing());
+    lua_setfield(L, -2, "playing");
+    lua_pushinteger(L, ac97_get_volume());
+    lua_setfield(L, -2, "volume");
+    return 1;
+}
+
+static const luaL_Reg audio_funcs[] = {
+    {"beep",      l_audio_beep},
+    {"play_tone", l_audio_beep},   /* alias */
+    {"volume",    l_audio_volume},
+    {"stop",      l_audio_stop},
+    {"status",    l_audio_status},
+    {NULL, NULL}
+};
+
 /* Library function table */
 static const luaL_Reg claos_funcs[] = {
     {"ask",       l_ask},
@@ -336,6 +376,11 @@ void claos_lua_register(lua_State* L) {
     lua_pushinteger(L, KEY_MOD_CTRL);    lua_setfield(L,-2,"K_CTRL");
     lua_pushinteger(L, KEY_MOD_SHIFT);   lua_setfield(L,-2,"K_SHIFT");
     lua_setfield(L, -2, "gui");
+
+    /* Create claos.audio subtable */
+    luaL_newlibtable(L, audio_funcs);
+    luaL_setfuncs(L, audio_funcs, 0);
+    lua_setfield(L, -2, "audio");
 
     lua_setglobal(L, "claos");
     serial_print("[LUA] claos global set\n");

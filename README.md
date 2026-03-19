@@ -68,13 +68,22 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 - Shell commands: `dir`, `read`, `write`, `mkdir`, `del`, `disk`
 - Build system preserves filesystem data across kernel rebuilds
 
-### Phase 7 — Embedded Lua 5.5 (Current)
+### Phase 7 — Embedded Lua 5.5
 - **Lua 5.5** ported to freestanding i686 (32 source files compiled into kernel)
 - Full compatibility shim: malloc/realloc/free, math, stdio, time, setjmp/longjmp
 - **`claos.*` API bindings** — talk to Claude, read/write files, system info from Lua
 - Interactive Lua REPL (`lua` command) and script execution (`lua <file>`)
 - Inline Lua execution (`luarun <code>`)
 - Pre-installed scripts on ChaosFS: `/scripts/hello.lua`, `/scripts/chat.lua`
+
+### Phase 8 — GUI Desktop & Audio (Current)
+- **VESA framebuffer** graphics with Lua-driven desktop environment
+- Floating window manager with draggable, resizable windows
+- App framework: terminal emulator, file browser, notepad viewer
+- PS/2 mouse driver with cursor rendering and click events
+- Shared widget system (buttons, text fields, scroll bars)
+- **AC97 audio driver** — DMA ring buffer playback with sine wave tone generation
+- Intel 82801AA codec support via PCI bus master I/O
 
 ## Shell Commands
 
@@ -100,6 +109,7 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | `clear` | Clear screen |
 | `panic` | Trigger a kernel panic |
 | `reboot` | Reboot the system |
+| `gui` | Open GUI desktop |
 | *anything else* | *Sent to Claude automatically* |
 
 ## Roadmap
@@ -114,7 +124,8 @@ CLAOS is an **AI-native OS** where Claude (Anthropic's AI) is integrated at the 
 | 5 | **Done** | ClaudeShell |
 | 6 | **Done** | ChaosFS Custom Filesystem |
 | 7 | **Done** | Embedded Lua 5.5 Scripting |
-| 8 | Planned | GUI Desktop |
+| 8 | **Done** | GUI Desktop & AC97 Audio |
+| 9 | Planned | 3D Engine |
 
 ---
 
@@ -150,6 +161,8 @@ Either edit `claude/config.h` with your API key before building, or use the `con
 ┌──────────────────────────────────────────────────┐
 │                  CLAOS Stack                      │
 ├──────────────────────────────────────────────────┤
+│  GUI Desktop (Lua + VESA framebuffer)              │
+├──────────────────────────────────────────────────┤
 │  ClaudeShell (AI-first interactive shell)          │
 ├──────────────────────────────────────────────────┤
 │  Claude Protocol + HTTPS (JSON over TLS 1.2)      │
@@ -159,7 +172,7 @@ Either edit `claude/config.h` with your API key before building, or use the `con
 ├──────────────────────────────────────────────────┤
 │  Kernel (GDT, IDT, PMM, VMM, heap, scheduler)    │
 ├──────────────────────────────────────────────────┤
-│  Drivers (VGA, PS/2, PIT, PCI, e1000)             │
+│  Drivers (VGA, PS/2, PIT, PCI, e1000, AC97)        │
 ├──────────────────────────────────────────────────┤
 │  Bootloader (MBR → Protected Mode → 1MB kernel)  │
 └──────────────────────────────────────────────────┘

@@ -41,13 +41,20 @@ void pci_write32(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint32
 }
 
 bool pci_find_device(uint16_t vendor_id, uint16_t device_id, struct pci_device* dev) {
-    /* Scan all PCI buses, slots, and functions */
+    /* Scan PCI buses — skip empty buses early for speed */
     for (uint16_t bus = 0; bus < 256; bus++) {
+        /* Quick check: if slot 0, func 0 has no device, skip entire bus */
+        uint16_t bus_check = pci_read16(bus, 0, 0, PCI_VENDOR_ID);
+        if (bus_check == 0xFFFF)
+            continue;
+
         for (uint8_t slot = 0; slot < 32; slot++) {
             for (uint8_t func = 0; func < 8; func++) {
                 uint16_t vid = pci_read16(bus, slot, func, PCI_VENDOR_ID);
-                if (vid == 0xFFFF)
-                    continue;   /* No device here */
+                if (vid == 0xFFFF) {
+                    if (func == 0) break;  /* Empty slot — skip all functions */
+                    continue;
+                }
 
                 uint16_t did = pci_read16(bus, slot, func, PCI_DEVICE_ID);
 
