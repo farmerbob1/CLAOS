@@ -106,6 +106,61 @@ void vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags) {
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
 }
 
+void vmm_split_4mb_page(uint32_t virt_4mb_aligned) {
+    uint32_t pd_index = virt_4mb_aligned >> 22;
+
+    /* Only split if it's actually a 4MB PSE page */
+    if (!(page_directory[pd_index] & PTE_4MB)) {
+        serial_print("[VMM] split: not a 4MB page\n");
+        return;
+    }
+
+    uint32_t base_phys = page_directory[pd_index] & 0xFFC00000;
+    uint32_t old_flags = page_directory[pd_index] & 0x1F; /* P, W, U, WT, NC */
+
+    /* Allocate a page for the new page table */
+    uint32_t pt_phys = pmm_alloc_page();
+    if (!pt_phys) {
+        serial_print("[VMM] split: out of memory\n");
+        return;
+    }
+
+    /* Fill 1024 entries preserving the original identity mapping */
+    uint32_t* pt = (uint32_t*)pt_phys;
+    for (int i = 0; i < 1024; i++) {
+        pt[i] = (base_phys + i * PAGE_SIZE) | (old_flags & ~PTE_4MB);
+    }
+
+    /* Replace PDE: point to page table, remove PTE_4MB */
+    page_directory[pd_index] = pt_phys | PTE_PRESENT | PTE_WRITABLE;
+
+    /* Flush TLB by reloading CR3 */
+    __asm__ volatile ("mov %%cr3, %%eax; mov %%eax, %%cr3" ::: "eax", "memory");
+}
+
+int vmm_map_framebuffer(uint32_t fb_phys, uint32_t size) {
+    uint32_t fb_end = fb_phys + size;
+
+    /* Split any 4MB PSE pages that overlap the framebuffer */
+    uint32_t start_4mb = fb_phys & 0xFFC00000;
+    uint32_t end_4mb = (fb_end + 0x3FFFFF) & 0xFFC00000;
+    for (uint32_t addr = start_4mb; addr < end_4mb; addr += 0x400000) {
+        uint32_t pd_index = addr >> 22;
+        if (pd_index >= 4 && (page_directory[pd_index] & PTE_4MB)) {
+            vmm_split_4mb_page(addr);
+        }
+    }
+
+    /* Remap each 4KB page of the framebuffer with NOCACHE */
+    uint32_t flags = PTE_PRESENT | PTE_WRITABLE | PTE_WRITETHROUGH | PTE_NOCACHE;
+    for (uint32_t addr = fb_phys; addr < fb_end; addr += PAGE_SIZE) {
+        vmm_map_page(addr, addr, flags);
+    }
+
+    serial_print("[VMM] Framebuffer mapped with NOCACHE\n");
+    return 0;
+}
+
 void vmm_unmap_page(uint32_t virt) {
     uint32_t pd_index = virt >> 22;
     uint32_t pt_index = (virt >> 12) & 0x3FF;

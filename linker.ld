@@ -34,8 +34,10 @@ SECTIONS
     }
 
     .bss ALIGN(16) : {
+        _bss_start = .;
         *(COMMON)
         *(.bss)
+        _bss_end = .;
     }
 
     /* Remember the end of the kernel for memory management later */

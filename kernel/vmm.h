@@ -32,4 +32,10 @@ void vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags);
 /* Unmap a virtual page */
 void vmm_unmap_page(uint32_t virt);
 
+/* Split a 4MB PSE page into 4KB pages (needed for cache control) */
+void vmm_split_4mb_page(uint32_t virt_4mb_aligned);
+
+/* Map the VESA framebuffer with NOCACHE flags. Returns 0 on success. */
+int vmm_map_framebuffer(uint32_t fb_phys, uint32_t size);
+
 #endif /* CLAOS_VMM_H */

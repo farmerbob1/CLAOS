@@ -22,7 +22,7 @@ QEMU    = /c/msys64/mingw64/bin/qemu-system-i386
 # ─── Compiler Flags ──────────────────────────────────────────
 CFLAGS  = -ffreestanding -nostdlib -fno-builtin -fno-pie \
           -Wall -Wextra -Wno-unused-parameter \
-          -I include -I kernel -I drivers -I net -I claude -I shell -I fs -I lua \
+          -I include -I kernel -I drivers -I net -I claude -I shell -I fs -I lua -I gui \
           -I lib/bearssl/inc -I lib/bearssl/src \
           -I lib/lua/src \
           -O2 -g
@@ -69,6 +69,9 @@ C_SOURCES = kernel/main.c \
             claude/panic_handler.c \
             shell/shell.c \
             lua/claos_lib.c \
+            gui/fb.c \
+            gui/font.c \
+            gui/console.c \
             lib/bearssl/bearssl_shim.c \
             lib/lua/lua_shim.c
 
