@@ -346,9 +346,11 @@ void lua_repl(void) {
 
         /* Try as expression first (prefix with "return ") for convenience */
         char expr_buf[600];
-        expr_buf[0] = '\0';
-        strcat(expr_buf, "return ");
-        strcat(expr_buf, line);
+        size_t line_len = strlen(line);
+        if (line_len > sizeof(expr_buf) - 8) line_len = sizeof(expr_buf) - 8;
+        memcpy(expr_buf, "return ", 7);
+        memcpy(expr_buf + 7, line, line_len);
+        expr_buf[7 + line_len] = '\0';
 
         int status = luaL_dostring(global_L, expr_buf);
         if (status != 0) {

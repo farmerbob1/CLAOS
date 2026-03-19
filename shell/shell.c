@@ -474,15 +474,22 @@ static void cmd_disk(void) {
 static void cmd_unknown(const char* input) {
     /* Build a contextualized prompt for Claude */
     static char prompt[1200];
-    prompt[0] = '\0';
-    strcat(prompt,
+    static const char prefix[] =
         "You are Claude, the AI integrated into CLAOS (Claude Assisted Operating System). "
         "The user typed the following at the claos> shell prompt. "
         "If it looks like a question or conversation, respond naturally. "
         "If it looks like a command, explain what it would do or suggest alternatives. "
         "Keep your response concise (1-3 sentences).\n\n"
-        "User typed: ");
-    strcat(prompt, input);
+        "User typed: ";
+
+    size_t prefix_len = sizeof(prefix) - 1;
+    size_t input_len = strlen(input);
+    size_t max_input = sizeof(prompt) - prefix_len - 1;
+
+    memcpy(prompt, prefix, prefix_len);
+    if (input_len > max_input) input_len = max_input;
+    memcpy(prompt + prefix_len, input, input_len);
+    prompt[prefix_len + input_len] = '\0';
 
     cmd_claude(prompt);
 }

@@ -52,14 +52,23 @@
 
 static bool drive_detected = false;
 
-/* Wait for the drive to not be busy */
-static void ata_wait_bsy(void) {
-    while (inb(ATA_STATUS) & ATA_SR_BSY);
+/* Maximum iterations to wait before giving up (~100ms at typical I/O speed) */
+#define ATA_TIMEOUT 100000
+
+/* Wait for the drive to not be busy. Returns true on success, false on timeout. */
+static bool ata_wait_bsy(void) {
+    for (int i = 0; i < ATA_TIMEOUT; i++) {
+        if (!(inb(ATA_STATUS) & ATA_SR_BSY)) return true;
+    }
+    return false;
 }
 
-/* Wait for DRQ (data ready) */
-static void ata_wait_drq(void) {
-    while (!(inb(ATA_STATUS) & ATA_SR_DRQ));
+/* Wait for DRQ (data ready). Returns true on success, false on timeout. */
+static bool ata_wait_drq(void) {
+    for (int i = 0; i < ATA_TIMEOUT; i++) {
+        if (inb(ATA_STATUS) & ATA_SR_DRQ) return true;
+    }
+    return false;
 }
 
 /* 400ns delay by reading alternate status 4 times */

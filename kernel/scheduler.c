@@ -31,6 +31,21 @@ static bool scheduler_enabled = false;
 /* Defined in scheduler_asm.asm */
 extern void task_switch(uint32_t* old_esp, uint32_t new_esp);
 
+/* Called when a task function returns. Marks the task as unused and yields. */
+static void task_exit(void) {
+    if (current_task > 0) {  /* Never exit the kernel task */
+        serial_print("[SCHED] Task exited: ");
+        serial_print(tasks[current_task].name);
+        serial_print("\n");
+        tasks[current_task].state = TASK_UNUSED;
+        task_count--;
+        /* kfree the stack would be nice but we can't free our own stack.
+         * Just leave it — the task slot is reusable. */
+    }
+    /* Yield forever — scheduler will skip this UNUSED task */
+    while (1) task_yield();
+}
+
 void scheduler_init(void) {
     memset(tasks, 0, sizeof(tasks));
 
@@ -78,9 +93,8 @@ int task_create(const char* name, void (*entry)(void)) {
      */
     uint32_t* sp = (uint32_t*)(stack + TASK_STACK_SIZE);
 
-    /* Push a fake return address for if the task function returns.
-     * Tasks shouldn't return, but if they do, we'll handle it. */
-    *(--sp) = 0;               /* Fake return address (task_exit placeholder) */
+    /* If the task function returns, it lands here instead of crashing */
+    *(--sp) = (uint32_t)task_exit;
 
     /* Push the entry point — this is where task_switch will "return" to */
     *(--sp) = (uint32_t)entry; /* EIP — task_switch does a RET to this */
