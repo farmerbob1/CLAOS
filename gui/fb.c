@@ -66,11 +66,38 @@ bool fb_init(void) {
     fb.bpp         = *(volatile uint8_t*)VBE_BPP_ADDR;
     fb.active      = true;
 
-    /* Clear to black and display */
-    fb_clear(FB_BLACK);
-    fb_swap();
+    /* Test: write a single white pixel directly to framebuffer */
+    uint8_t* test = (uint8_t*)fb.framebuffer;
+    test[0] = 0xFF; test[1] = 0xFF; test[2] = 0xFF;  /* White pixel */
+    serial_print("[FB] Direct pixel write OK\n");
 
-    serial_print("[FB] VESA framebuffer initialized\n");
+    /* Clear back buffer to black */
+    fb_clear(FB_BLACK);
+
+    serial_print("[FB] VESA framebuffer initialized: ");
+    /* Print framebuffer address and dimensions to serial */
+    char hex[9];
+    uint32_t addr = (uint32_t)fb.framebuffer;
+    for (int i = 7; i >= 0; i--) { hex[i] = "0123456789ABCDEF"[addr & 0xF]; addr >>= 4; }
+    hex[8] = 0;
+    serial_print("fb=0x"); serial_print(hex);
+    serial_print(" w=");
+    char dbuf[8]; int di = 0; int v = fb.width;
+    if (v == 0) dbuf[di++] = '0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
+    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
+    serial_print(" h=");
+    di=0; v=fb.height;
+    if(v==0)dbuf[di++]='0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
+    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
+    serial_print(" bpp=");
+    di=0; v=fb.bpp;
+    if(v==0)dbuf[di++]='0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
+    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
+    serial_print(" pitch=");
+    di=0; v=fb.pitch;
+    if(v==0)dbuf[di++]='0'; else while(v>0){dbuf[di++]='0'+v%10;v/=10;}
+    while(di>0){char c=dbuf[--di]; char s[2]={c,0}; serial_print(s);}
+    serial_print("\n");
     return true;
 }
 

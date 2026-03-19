@@ -65,7 +65,7 @@ static void keyboard_irq_handler(struct registers* regs) {
  * This proves the scheduler is actually running multiple tasks.
  */
 static void task_status_indicator(void) {
-    if (fb_is_active()) return;
+    if (fb_is_active()) { while(1) task_sleep(10000); }
     volatile uint16_t* vga = (uint16_t*)0xB8000;
     /* Position: row 0, col 79 (top-right corner) */
     int pos = 79;
@@ -83,7 +83,7 @@ static void task_status_indicator(void) {
  * Demo task: shows uptime counter in the top-right area.
  */
 static void task_uptime_display(void) {
-    if (fb_is_active()) return;
+    if (fb_is_active()) { while(1) task_sleep(10000); }
     volatile uint16_t* vga = (uint16_t*)0xB8000;
 
     while (1) {
@@ -231,12 +231,15 @@ void kernel_main(void) {
     boot_msg("Virtual memory (paging)", "OK");
     serial_print("[CLAOS] VMM OK\n");
 
-    /* Step 8b: Map VESA framebuffer if stage2 set VBE mode */
+    /* Step 8b: Map VESA framebuffer if stage2 set VBE mode.
+     * Skip the NOCACHE remap — the 4MB PSE identity mapping already works
+     * for framebuffer access. NOCACHE is ideal but not strictly required
+     * since we flush the full buffer on each swap. */
     if (*(volatile uint8_t*)0x9000 == 1) {
-        uint32_t fb_phys = *(volatile uint32_t*)0x9004;
-        uint32_t fb_size = (uint32_t)(*(volatile uint16_t*)0x9008) * (*(volatile uint16_t*)0x900A) * 4;
-        vmm_map_framebuffer(fb_phys, fb_size);
-        serial_print("[CLAOS] Framebuffer mapped\n");
+        /* Framebuffer at 0xFD000000 is already identity-mapped via 4MB PSE pages.
+         * We skip vmm_map_framebuffer for now to avoid page table splitting
+         * that triggers a QEMU 10.2.1 TCG assertion bug. */
+        serial_print("[CLAOS] Framebuffer identity-mapped via PSE\n");
     }
 
     /* Step 8c: Initialize framebuffer console */
