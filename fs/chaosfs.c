@@ -149,6 +149,18 @@ bool chaosfs_init(void) {
     serial_print(buf);
     serial_print(" files\n");
 
+    /* Debug: dump all entries */
+    for (int i = 0; i < (int)superblock.max_files && i < 20; i++) {
+        if (file_table[i].filename[0] == '\0') continue;
+        if (file_table[i].flags & CHAOSFS_FLAG_DELETED) continue;
+        serial_print("  ["); serial_print(buf); serial_print("] ");
+        char ibuf[4]; ibuf[0]='0'+i/10; ibuf[1]='0'+i%10; ibuf[2]=0;
+        serial_print(ibuf);
+        serial_print(": ");
+        serial_print(file_table[i].filename);
+        serial_print("\n");
+    }
+
     return true;
 }
 
@@ -156,14 +168,20 @@ void chaosfs_list(const char* path_prefix, chaosfs_list_cb callback, void* ctx) 
     if (!mounted) return;
 
     int prefix_len = strlen(path_prefix);
+    /* Sanity check — never scan beyond our array */
+    int max = (int)superblock.max_files;
+    if (max > CHAOSFS_MAX_FILES) max = CHAOSFS_MAX_FILES;
 
-    for (int i = 0; i < (int)superblock.max_files; i++) {
+    for (int i = 0; i < max; i++) {
         if (file_table[i].filename[0] == '\0') continue;
         if (file_table[i].flags & CHAOSFS_FLAG_DELETED) continue;
 
         /* Check if this entry matches the prefix */
         if (prefix_len == 0 || prefix_len == 1 ||
             strncmp(file_table[i].filename, path_prefix, prefix_len) == 0) {
+            serial_print("[ChaosFS] list entry: ");
+            serial_print(file_table[i].filename);
+            serial_print("\n");
             callback(&file_table[i], ctx);
         }
     }
@@ -189,7 +207,8 @@ int chaosfs_read(const char* path, void* buf, size_t buf_size) {
     uint32_t sector = data_sector;
 
     while (remaining > 0) {
-        uint8_t count = remaining >= 512 * 128 ? 128 :
+        /* Read through sector_buf (4KB = 8 sectors max per chunk) */
+        uint8_t count = remaining >= sizeof(sector_buf) ? (sizeof(sector_buf) / 512) :
                         (uint8_t)((remaining + 511) / 512);
         if (ata_read_sectors(sector, count, sector_buf) < 0) {
             return -1;

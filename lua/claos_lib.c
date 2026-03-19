@@ -88,7 +88,7 @@ static int l_mem_total(lua_State* L) {
 /* ─── claos.read(path) → string or nil ─── */
 static int l_read(lua_State* L) {
     const char* path = luaL_checkstring(L, 1);
-    static char buf[16384];  /* 16KB — enough for GUI scripts */
+    static char buf[32768];  /* 32KB — GUI scripts can be large */
     int len = chaosfs_read(path, buf, sizeof(buf));
     if (len >= 0) {
         lua_pushlstring(L, buf, len);
@@ -116,7 +116,13 @@ struct ls_lua_ctx {
 
 static void ls_lua_callback(const struct chaosfs_entry* entry, void* ctx) {
     struct ls_lua_ctx* lctx = (struct ls_lua_ctx*)ctx;
+    lua_createtable(lctx->L, 0, 3);
     lua_pushstring(lctx->L, entry->filename);
+    lua_setfield(lctx->L, -2, "name");
+    lua_pushinteger(lctx->L, entry->size);
+    lua_setfield(lctx->L, -2, "size");
+    lua_pushboolean(lctx->L, entry->flags & 0x01);  /* CHAOSFS_FLAG_DIR */
+    lua_setfield(lctx->L, -2, "is_dir");
     lua_rawseti(lctx->L, -2, lctx->index++);
 }
 
@@ -316,7 +322,7 @@ int lua_run_file(const char* path) {
     }
 
     /* Read the file */
-    static char script_buf[16384];
+    static char script_buf[32768];
     int len = chaosfs_read(path, script_buf, sizeof(script_buf) - 1);
     if (len < 0) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);

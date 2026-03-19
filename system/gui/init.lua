@@ -1,462 +1,342 @@
--- CLAOS GUI — Interactive Desktop
+-- CLAOS GUI Desktop
 local g = claos.gui
-
 if not g.active() then
-    if not g.activate() then
-        print("ERROR: Cannot activate VESA mode")
-        return
+    if not g.activate() then print("ERROR: No VESA") return end
+end
+local W,H = g.width(),g.height()
+local FW,FH = 8,16
+
+-- Theme
+local dk = false
+local function mkT(d)
+    if d then return {
+        bg=g.rgb(18,18,28),wh=g.rgb(30,30,42),pn=g.rgb(24,24,36),
+        ac=g.rgb(127,119,221),al=g.rgb(50,46,80),ad=g.rgb(170,165,240),
+        t1=g.rgb(210,208,220),t2=g.rgb(140,138,150),t3=g.rgb(100,98,110),
+        gn=g.rgb(99,200,80),bd=g.rgb(45,45,60),hv=g.rgb(40,40,55),
+        ib=g.rgb(35,35,50),wb=g.rgb(28,28,40),rd=g.rgb(220,80,80),
+    } else return {
+        bg=g.rgb(244,241,236),wh=g.rgb(255,255,255),pn=g.rgb(249,248,246),
+        ac=g.rgb(127,119,221),al=g.rgb(238,237,254),ad=g.rgb(83,74,183),
+        t1=g.rgb(44,44,42),t2=g.rgb(136,135,128),t3=g.rgb(180,178,169),
+        gn=g.rgb(99,153,34),bd=g.rgb(225,225,220),hv=g.rgb(235,233,228),
+        ib=g.rgb(244,241,236),wb=g.rgb(255,255,255),rd=g.rgb(220,80,80),
+    } end
+end
+local T = mkT(false)
+local TH,SW,RP = 36,56,200
+
+-- Helpers
+local function hit(x,y,w,h,mx,my) return mx>=x and mx<x+w and my>=y and my<y+h end
+local function wrap(s,mc)
+    local r={} local p=1
+    while p<=#s do
+        if #s-p+1<=mc then r[#r+1]=s:sub(p); break end
+        local c=s:sub(p,p+mc-1) local sp
+        for i=#c,1,-1 do if c:sub(i,i)==" " then sp=i break end end
+        if sp then r[#r+1]=c:sub(1,sp-1); p=p+sp
+        else r[#r+1]=c; p=p+mc end
+    end; return r
+end
+
+-- State
+local view = "chat"
+local msgs = {{f="c",t="Welcome to CLAOS! I'm running natively inside your OS. What would you like to do?"}}
+local wait = false
+local cscr = 0
+local inp = ""
+local lmx,lmy = W/2,H/2
+
+-- Topbar
+local function dTop()
+    g.rect(0,0,W,TH,T.wh); g.hline(0,TH-1,W,T.bd)
+    g.rounded_rect(8,8,20,20,6,T.ac); g.text(11,10,"C",T.wh,T.ac)
+    g.text(34,12,"CLAOS",T.t1,T.wh); g.text(82,12,"v0.8",T.t3,T.wh)
+    local rx=W-200
+    g.circle_filled(rx,18,3,T.gn); g.text(rx+8,12,"Online",T.t2,T.wh)
+    local up=claos.uptime()
+    g.text(rx+80,12,string.format("%02d:%02d",math.floor(up/60),up%60),T.t2,T.wh)
+end
+
+-- Sidebar
+local sideI = {{"C","chat"},{"T","term"},{"M","mon"},{"F","files"}}
+local function dSide()
+    g.rect(0,TH,SW,H-TH,T.pn); g.vline(SW-1,TH,H-TH,T.bd)
+    for i,s in ipairs(sideI) do
+        local y=TH+12+(i-1)*42
+        local a=s[2]==view
+        local bg=a and T.ac or T.bg; local fg=a and T.wh or T.t2
+        g.rounded_rect(9,y,38,38,10,bg); g.text(24,y+11,s[1],fg,bg)
     end
+    -- Settings/theme toggle
+    g.rounded_rect(9,H-50,38,38,10,T.bg)
+    g.text(21,H-39,dk and "L" or "D",T.t2,T.bg)
 end
 
-local W, H = g.width(), g.height()
-
--- ── Theme ─────────────────────────────────────────────────
-local T = {
-    bg         = g.rgb(244, 241, 236),
-    white      = g.rgb(255, 255, 255),
-    panel      = g.rgb(249, 248, 246),
-    accent     = g.rgb(127, 119, 221),
-    accent_lt  = g.rgb(238, 237, 254),
-    accent_dk  = g.rgb(83, 74, 183),
-    txt        = g.rgb(44, 44, 42),
-    txt2       = g.rgb(136, 135, 128),
-    txt3       = g.rgb(180, 178, 169),
-    txt4       = g.rgb(95, 94, 90),
-    green      = g.rgb(99, 153, 34),
-    border     = g.rgb(225, 225, 220),
-    hover      = g.rgb(235, 233, 228),
-    fw = 8, fh = 16,
-    top_h = 36, side_w = 56, rpan_w = 200,
-}
-
--- ── Widget System ─────────────────────────────────────────
--- Every widget has: x, y, w, h, draw(), and optional on_click()
-
-local widgets = {}
-local focused_widget = nil  -- widget receiving keyboard input
-local hover_widget = nil    -- widget under mouse
-
-local function hit_test(wx, wy, ww, wh, mx, my)
-    return mx >= wx and mx < wx + ww and my >= wy and my < wy + wh
+-- Right panel
+local function dRight()
+    local px=W-RP
+    g.rect(px,TH,RP,H-TH,T.pn); g.vline(px,TH,H-TH,T.bd)
+    local x,y=px+12,TH+16
+    g.text(x,y,"CLAUDE",T.t3,T.pn); y=y+20
+    g.rounded_rect(x,y,RP-24,36,10,T.wh)
+    g.circle_filled(x+14,y+18,4,wait and T.ac or T.gn)
+    g.text(x+24,y+10,wait and "Thinking" or "Active",T.t1,T.wh); y=y+48
+    g.text(x,y,"VIEW: "..view:upper(),T.t3,T.pn); y=y+24
+    g.text(x,y,#msgs.." messages",T.t3,T.pn)
+    y=H-50
+    g.rounded_rect(x,y,RP-24,40,10,T.al)
+    g.text(x+16,y+12,"CLAOS v0.8",T.ad,T.al)
 end
 
-local function make_button(x, y, w, h, label, opts)
-    opts = opts or {}
-    local btn = {
-        x = x, y = y, w = w, h = h,
-        label = label,
-        bg = opts.bg or T.bg,
-        fg = opts.fg or T.txt2,
-        bg_hover = opts.bg_hover or T.hover,
-        radius = opts.radius or 8,
-        hovered = false,
-        on_click = opts.on_click,
-    }
-    function btn:draw()
-        local bg = self.hovered and self.bg_hover or self.bg
-        g.rounded_rect(self.x, self.y, self.w, self.h, self.radius, bg)
-        local tx = self.x + (self.w - #self.label * T.fw) / 2
-        local ty = self.y + (self.h - T.fh) / 2
-        g.text(math.floor(tx), math.floor(ty), self.label, self.fg, bg)
-    end
-    widgets[#widgets + 1] = btn
-    return btn
-end
-
-local function make_textbox(x, y, w, h, placeholder)
-    local tb = {
-        x = x, y = y, w = w, h = h,
-        text = "",
-        placeholder = placeholder or "",
-        cursor_pos = 0,
-        focused = false,
-        on_submit = nil,
-    }
-    function tb:draw()
-        local bg = self.focused and T.white or T.bg
-        g.rounded_rect(self.x, self.y, self.w, self.h, 12, bg)
-        if self.focused then
-            g.rect_outline(self.x, self.y, self.w, self.h, T.accent)
-        end
-        local tx = self.x + 12
-        local ty = self.y + (self.h - T.fh) / 2
-        if #self.text > 0 then
-            -- Visible text (truncate to fit)
-            local max_chars = math.floor((self.w - 24) / T.fw)
-            local visible = self.text
-            if #visible > max_chars then
-                visible = string.sub(visible, #visible - max_chars + 1)
-            end
-            g.text(tx, math.floor(ty), visible, T.txt, bg)
-            -- Cursor
-            if self.focused then
-                local cx = tx + #visible * T.fw
-                g.vline(cx, self.y + 6, self.h - 12, T.accent)
-            end
-        else
-            g.text(tx, math.floor(ty), self.placeholder, T.txt3, bg)
-            if self.focused then
-                g.vline(tx, self.y + 6, self.h - 12, T.accent)
-            end
-        end
-    end
-    function tb:key_input(ch)
-        if ch == 8 then  -- backspace
-            if #self.text > 0 then
-                self.text = string.sub(self.text, 1, -2)
-            end
-        elseif ch == 10 or ch == 13 then  -- enter
-            if self.on_submit and #self.text > 0 then
-                self.on_submit(self.text)
-                self.text = ""
-            end
-        elseif ch >= 32 and ch < 127 then
-            self.text = self.text .. string.char(ch)
-        end
-    end
-    widgets[#widgets + 1] = tb
-    return tb
-end
-
--- ── Chat State ────────────────────────────────────────────
-local messages = {
-    { from = "claude", text = "Welcome to CLAOS! I'm running natively inside your OS — connected directly to Anthropic's API over HTTPS. What would you like to do?" },
-}
-local chat_scroll = 0
-local waiting_for_claude = false
-
-local function add_message(from, text)
-    messages[#messages + 1] = { from = from, text = text }
-end
-
-local function send_to_claude(user_text)
-    add_message("user", user_text)
-    waiting_for_claude = true
-end
-
--- ── Layout Constants ──────────────────────────────────────
-local chat_x = T.side_w
-local chat_y = T.top_h
-local chat_w = W - T.side_w - T.rpan_w
-local chat_h = H - T.top_h
-
--- ── Create Widgets ────────────────────────────────────────
--- Chat input textbox
-local chat_input = make_textbox(
-    chat_x + 16, H - 52, chat_w - 72, 36,
-    "Ask Claude anything..."
-)
-chat_input.focused = true
-focused_widget = chat_input
-
--- Send button
-local send_btn = make_button(
-    chat_x + chat_w - 48, H - 52, 36, 36, ">",
-    { bg = T.accent, fg = T.white, bg_hover = T.accent_dk, radius = 12 }
-)
-
--- Wire up chat submission
-local function submit_chat()
-    if #chat_input.text > 0 then
-        send_to_claude(chat_input.text)
-        chat_input.text = ""
-    end
-end
-
-chat_input.on_submit = submit_chat
-send_btn.on_click = submit_chat
-
--- Sidebar buttons
-local active_view = "chat"
-local side_btns = {}
-local side_items = {
-    { "C", "chat" },
-    { ">", "term" },
-    { "M", "mon" },
-    { "F", "files" },
-}
-for i, item in ipairs(side_items) do
-    local sb = make_button(9, T.top_h + 12 + (i-1) * 42, 38, 38, item[1], {
-        bg = (item[2] == active_view) and T.accent or T.bg,
-        fg = (item[2] == active_view) and T.white or T.txt2,
-        bg_hover = (item[2] == active_view) and T.accent or T.hover,
-        radius = 10,
-        on_click = function()
-            active_view = item[2]
-            -- Update sidebar button colors
-            for j, sb2 in ipairs(side_btns) do
-                local active = side_items[j][2] == active_view
-                sb2.bg = active and T.accent or T.bg
-                sb2.fg = active and T.white or T.txt2
-                sb2.bg_hover = active and T.accent or T.hover
-            end
-        end,
-    })
-    side_btns[i] = sb
-end
-
--- ── Word Wrap Helper ──────────────────────────────────────
-local function wrap_text(text, max_chars)
-    local lines = {}
-    local pos = 1
-    while pos <= #text do
-        if #text - pos + 1 <= max_chars then
-            lines[#lines + 1] = string.sub(text, pos)
-            break
-        end
-        -- Find last space within max_chars
-        local chunk = string.sub(text, pos, pos + max_chars - 1)
-        local sp = nil
-        for i = #chunk, 1, -1 do
-            if string.sub(chunk, i, i) == " " then
-                sp = i
-                break
-            end
-        end
-        if sp then
-            lines[#lines + 1] = string.sub(chunk, 1, sp - 1)
-            pos = pos + sp
-        else
-            lines[#lines + 1] = chunk
-            pos = pos + max_chars
-        end
-    end
-    return lines
-end
-
--- ── Drawing Functions ─────────────────────────────────────
-local function draw_topbar()
-    g.rect(0, 0, W, T.top_h, T.white)
-    g.hline(0, T.top_h - 1, W, T.border)
-
-    g.rounded_rect(8, 8, 20, 20, 6, T.accent)
-    g.text(11, 10, "C", T.white, T.accent)
-    g.text(34, 12, "CLAOS", T.txt, T.white)
-    g.text(82, 12, "v0.8", T.txt3, T.white)
-
-    local rx = W - 240
-    g.circle_filled(rx, 18, 3, T.green)
-    g.text(rx + 8, 12, "Online", T.txt2, T.white)
-
-    local mf = claos.mem_free()
-    local mt = claos.mem_total()
-    local used = mt - (mf * 4 / 1024)
-    g.text(rx + 72, 12, string.format("%d / %d MB", math.floor(used), mt), T.txt2, T.white)
-
-    local up = claos.uptime()
-    g.text(rx + 172, 12, string.format("%02d:%02d", math.floor(up/60), up%60), T.txt2, T.white)
-end
-
-local function draw_sidebar()
-    g.rect(0, T.top_h, T.side_w, H - T.top_h, T.panel)
-    g.vline(T.side_w - 1, T.top_h, H - T.top_h, T.border)
-    for _, sb in ipairs(side_btns) do sb:draw() end
-
-    g.rounded_rect(9, H - 50, 38, 38, 10, T.bg)
-    g.text(21, H - 39, "S", T.txt2, T.bg)
-end
-
-local function draw_rpanel()
-    local px = W - T.rpan_w
-    local py = T.top_h
-    g.rect(px, py, T.rpan_w, H - py, T.panel)
-    g.vline(px, py, H - py, T.border)
-
-    local mx = px + 12
-    local y = py + 16
-
-    g.text(mx, y, "CLAUDE", T.txt3, T.panel)
-    y = y + 20
-    g.rounded_rect(mx, y, T.rpan_w - 24, 40, 10, T.white)
-    g.circle_filled(mx + 14, y + 20, 4, waiting_for_claude and T.accent or T.green)
-    g.text(mx + 24, y + 8, waiting_for_claude and "Thinking..." or "Active", T.txt, T.white)
-    g.text(mx + 24, y + 24, "claude-4", T.txt3, T.white)
-    y = y + 56
-
-    g.text(mx, y, "PANIC WATCHER", T.txt3, T.panel)
-    y = y + 20
-    g.rounded_rect(mx, y, T.rpan_w - 24, 44, 10, T.white)
-    g.circle_filled(mx + 14, y + 12, 4, T.green)
-    g.text(mx + 24, y + 4, "Armed", T.txt, T.white)
-    g.text(mx + 12, y + 24, "Watching Ring 0", T.txt3, T.white)
-    y = y + 60
-
-    g.text(mx, y, "MESSAGES", T.txt3, T.panel)
-    y = y + 20
-    g.rounded_rect(mx, y, T.rpan_w - 24, 28, 8, T.white)
-    g.text(mx + 12, y + 6, tostring(#messages) .. " messages", T.txt4, T.white)
-
-    y = H - 50
-    g.rounded_rect(mx, y, T.rpan_w - 24, 40, 10, T.accent_lt)
-    g.text(mx + 28, y + 4, "CLAOS v0.8", T.accent_dk, T.accent_lt)
-    g.text(mx + 6, y + 22, "\"I am the kernel now.\"", T.accent, T.accent_lt)
-end
-
-local function draw_chat()
-    g.rect(chat_x, chat_y, chat_w, chat_h, T.white)
-
+-- Chat view
+local function dChat()
+    local cx,cy,cw,ch=SW,TH,W-SW-RP,H-TH
+    g.rect(cx,cy,cw,ch,T.wb)
     -- Header
-    g.hline(chat_x, chat_y + 51, chat_w, T.border)
-    g.circle_filled(chat_x + 28, chat_y + 26, 16, T.accent_lt)
-    g.text(chat_x + 24, chat_y + 18, "C", T.accent, T.accent_lt)
-    g.text(chat_x + 52, chat_y + 12, "Claude", T.txt, T.white)
-    g.text(chat_x + 52, chat_y + 28, "Connected via HTTPS", T.green, T.white)
-
-    -- Messages area
-    local msg_y = chat_y + 64
-    local msg_max_w = chat_w - 100
-    local max_chars = math.floor(msg_max_w / T.fw)
-
-    for _, msg in ipairs(messages) do
-        if msg_y > H - 80 then break end  -- don't draw below input
-
-        if msg.from == "claude" then
-            -- Claude message (left aligned)
-            g.circle_filled(chat_x + 22, msg_y + 12, 12, T.accent_lt)
-            g.text(chat_x + 18, msg_y + 6, "C", T.accent, T.accent_lt)
-            local lines = wrap_text(msg.text, max_chars)
-            local bh = #lines * T.fh + 16
-            g.rounded_rect(chat_x + 42, msg_y, msg_max_w, bh, 8, T.panel)
-            for li, line in ipairs(lines) do
-                g.text(chat_x + 52, msg_y + 8 + (li-1) * T.fh, line, T.txt, T.panel)
-            end
-            msg_y = msg_y + bh + 12
-        else
-            -- User message (right aligned)
-            local lines = wrap_text(msg.text, max_chars - 4)
-            local bh = #lines * T.fh + 16
-            local bw = 0
-            for _, line in ipairs(lines) do
-                if #line * T.fw > bw then bw = #line * T.fw end
-            end
-            bw = bw + 24
-            local bx = chat_x + chat_w - bw - 20
-            g.rounded_rect(bx, msg_y, bw, bh, 8, T.accent)
-            for li, line in ipairs(lines) do
-                g.text(bx + 12, msg_y + 8 + (li-1) * T.fh, line, T.white, T.accent)
-            end
-            msg_y = msg_y + bh + 12
-        end
-    end
-
-    -- Waiting indicator
-    if waiting_for_claude then
-        g.circle_filled(chat_x + 22, msg_y + 12, 12, T.accent_lt)
-        g.text(chat_x + 18, msg_y + 6, "C", T.accent, T.accent_lt)
-        g.rounded_rect(chat_x + 42, msg_y, 100, 32, 8, T.panel)
-        g.text(chat_x + 52, msg_y + 8, "Thinking...", T.txt3, T.panel)
-    end
-
-    -- Input area
-    g.hline(chat_x, H - 62, chat_w, T.border)
-    g.rect(chat_x, H - 61, chat_w, 61, T.white)
-    chat_input:draw()
-    send_btn:draw()
-end
-
-local function draw_cursor(mx, my)
-    for dy = 0, 11 do
-        local w = (dy < 8) and (dy + 1) or (12 - dy)
-        if w > 0 then
-            g.hline(mx, my + dy, 1, T.txt)
-            if w > 2 then g.hline(mx + 1, my + dy, w - 2, T.white) end
-            if w > 1 then g.pixel(mx + w - 1, my + dy, T.txt) end
-        end
-    end
-    g.pixel(mx, my + 12, T.txt)
-end
-
--- ── Main Loop ─────────────────────────────────────────────
-local function draw_all()
-    g.clear(T.bg)
-    draw_topbar()
-    draw_sidebar()
-    draw_chat()
-    draw_rpanel()
-end
-
-draw_all()
-draw_cursor(g.mouse_x(), g.mouse_y())
-g.swap()
-
-local running = true
-local last_mx, last_my = g.mouse_x(), g.mouse_y()
-local frame = 0
-
-while running do
-    local dirty = false
-    local old_hover = hover_widget
-
-    -- Process events
-    while true do
-        local ev = g.poll_event()
-        if not ev then break end
-
-        if ev.type == g.KEY_DOWN then
-            if ev.key == 27 then
-                running = false
-                break
-            end
-            -- Send to focused widget
-            if focused_widget and focused_widget.key_input then
-                focused_widget:key_input(ev.key)
-                dirty = true
-            end
-        elseif ev.type == g.MOUSE_MOVE then
-            last_mx, last_my = ev.x, ev.y
-            -- Update hover state
-            hover_widget = nil
-            for _, w in ipairs(widgets) do
-                if hit_test(w.x, w.y, w.w, w.h, ev.x, ev.y) then
-                    w.hovered = true
-                    hover_widget = w
-                else
-                    w.hovered = false
+    g.hline(cx,cy+44,cw,T.bd)
+    g.circle_filled(cx+24,cy+22,12,T.al)
+    g.text(cx+20,cy+16,"C",T.ac,T.al)
+    g.text(cx+44,cy+10,"Claude",T.t1,T.wb)
+    g.text(cx+44,cy+26,"Connected",T.gn,T.wb)
+    -- Messages
+    local mc=math.floor((cw-80)/FW)
+    local my=cy+50-cscr
+    for _,m in ipairs(msgs) do
+        local ls=wrap(m.t,mc); local lh=#ls*FH+12
+        if my+lh>cy+44 and my<cy+ch-52 then
+            if m.f=="c" then
+                g.rounded_rect(cx+12,my,cw-24,lh,8,T.pn)
+                for j,l in ipairs(ls) do
+                    local ly=my+6+(j-1)*FH
+                    if ly>cy+44 and ly<cy+ch-52 then g.text(cx+20,ly,l,T.t1,T.pn) end
                 end
-            end
-            dirty = true
-        elseif ev.type == g.MOUSE_DOWN then
-            -- Click handling
-            for _, w in ipairs(widgets) do
-                if hit_test(w.x, w.y, w.w, w.h, last_mx, last_my) then
-                    if w.on_click then w.on_click() end
-                    if w.key_input then
-                        focused_widget = w
-                        w.focused = true
-                    end
-                    dirty = true
-                    break
-                end
-            end
-        end
-    end
-
-    -- Process Claude response if waiting
-    if waiting_for_claude then
-        -- Try non-blocking Claude call
-        local last_msg = messages[#messages]
-        if last_msg.from == "user" then
-            local resp = claos.ask(last_msg.text)
-            if resp then
-                add_message("claude", resp)
             else
-                add_message("claude", "(No response from Claude)")
+                local mw=0; for _,l in ipairs(ls) do if #l*FW>mw then mw=#l*FW end end; mw=mw+20
+                g.rounded_rect(cx+cw-mw-12,my,mw,lh,8,T.ac)
+                for j,l in ipairs(ls) do
+                    local ly=my+6+(j-1)*FH
+                    if ly>cy+44 and ly<cy+ch-52 then g.text(cx+cw-mw-2,ly,l,T.wh,T.ac) end
+                end
             end
-            waiting_for_claude = false
-            dirty = true
+        end
+        my=my+lh+8
+    end
+    if wait then
+        g.rounded_rect(cx+12,my,100,28,8,T.pn)
+        g.text(cx+20,my+6,"Thinking...",T.t3,T.pn)
+    end
+    -- Input
+    g.hline(cx,cy+ch-50,cw,T.bd)
+    g.rect(cx,cy+ch-49,cw,49,T.wb)
+    g.rounded_rect(cx+12,cy+ch-42,cw-60,32,12,T.ib)
+    if #inp>0 then
+        local mc2=math.floor((cw-84)/FW)
+        local vi=inp; if #vi>mc2 then vi=vi:sub(#vi-mc2+1) end
+        g.text(cx+24,cy+ch-34,vi,T.t1,T.ib)
+        g.vline(cx+24+#vi*FW,cy+ch-40,20,T.ac)
+    else
+        g.text(cx+24,cy+ch-34,"Ask Claude anything...",T.t3,T.ib)
+        g.vline(cx+24,cy+ch-40,20,T.ac)
+    end
+    g.rounded_rect(cx+cw-42,cy+ch-42,32,32,10,T.ac)
+    g.text(cx+cw-34,cy+ch-34,">",T.wh,T.ac)
+end
+
+-- Terminal view
+local tl={"CLAOS Terminal v0.8","Type commands. ESC=desktop",""}
+local ti=""
+local function dTerm()
+    local cx,cy,cw,ch=SW,TH,W-SW-RP,H-TH
+    local bg=g.rgb(20,20,30); local fg=g.rgb(100,220,100)
+    g.rect(cx,cy,cw,ch,bg)
+    local ml=math.floor((ch-32)/FH)
+    local st=math.max(1,#tl-ml+1)
+    for i=st,#tl do
+        g.text(cx+8,cy+4+(i-st)*FH,tl[i],fg,bg)
+    end
+    g.text(cx+8,cy+ch-24,"claos> "..ti,fg,bg)
+    g.vline(cx+8+(7+#ti)*FW,cy+ch-28,20,fg)
+end
+
+-- System monitor
+local function dMon()
+    local cx,cy,cw,ch=SW+8,TH+8,W-SW-RP-16,H-TH-16
+    g.rect(SW,TH,W-SW-RP,H-TH,T.wb)
+    local y=cy
+    g.text(cx,y,"SYSTEM MONITOR",T.t1,T.wb); y=y+28
+    -- Memory
+    g.rounded_rect(cx,y,cw,60,10,T.pn)
+    g.text(cx+12,y+8,"MEMORY",T.t3,T.pn)
+    local mt=claos.mem_total(); local mf=claos.mem_free()
+    local u=mt-(mf*4/1024); local p=math.floor(u/mt*100)
+    g.text(cx+12,y+28,string.format("%dMB / %dMB (%d%%)",math.floor(u),mt,p),T.t1,T.pn)
+    g.rounded_rect(cx+12,y+46,cw-24,8,3,T.bd)
+    local bw=math.floor((cw-28)*p/100)
+    if bw>0 then g.rounded_rect(cx+14,y+47,bw,6,2,T.ac) end
+    y=y+72
+    -- Uptime
+    g.rounded_rect(cx,y,cw,44,10,T.pn)
+    g.text(cx+12,y+8,"UPTIME",T.t3,T.pn)
+    local up=claos.uptime()
+    g.text(cx+12,y+24,string.format("%02d:%02d:%02d  PIT@100Hz",math.floor(up/3600),math.floor(up%3600/60),up%60),T.t1,T.pn)
+    y=y+56
+    -- Network
+    g.rounded_rect(cx,y,cw,44,10,T.pn)
+    g.text(cx+12,y+8,"NETWORK",T.t3,T.pn)
+    g.circle_filled(cx+18,y+32,4,T.gn)
+    g.text(cx+28,y+24,"10.0.2.15 via e1000",T.t1,T.pn)
+end
+
+-- Files view
+local function dFiles()
+    local cx,cy,cw,ch=SW,TH,W-SW-RP,H-TH
+    g.rect(cx,cy,cw,ch,T.wb)
+    g.text(cx+12,cy+8,"FILE BROWSER",T.t1,T.wb)
+    g.rounded_rect(cx+12,cy+28,cw-24,24,8,T.ib)
+    g.text(cx+20,cy+32,"/",T.t1,T.ib)
+    g.hline(cx,cy+58,cw,T.bd)
+    local y=cy+64
+    local ls=claos.ls("/")
+    if ls then
+        for _,f in ipairs(ls) do
+            if y+28>cy+ch then break end
+            g.rect(cx+4,y,cw-8,28,T.wb)
+            if f.is_dir then
+                g.rounded_rect(cx+12,y+2,24,24,4,T.al)
+                g.text(cx+16,y+6,"D",T.ac,T.al)
+            else
+                g.rounded_rect(cx+12,y+2,24,24,4,T.pn)
+                g.text(cx+16,y+6,"F",T.t3,T.pn)
+            end
+            local nm=f.name
+            g.text(cx+44,y+6,nm,T.t1,T.wb)
+            if not f.is_dir then
+                local sz=f.size
+                local s=sz>=1024 and string.format("%.1fKB",sz/1024) or sz.."B"
+                g.text(cx+cw-80,y+6,s,T.t3,T.wb)
+            end
+            g.hline(cx+12,y+28,cw-24,T.bd)
+            y=y+32
+        end
+    end
+end
+
+-- Mouse cursor
+local function dCur(mx,my)
+    for dy=0,11 do
+        local w=(dy<8) and (dy+1) or (12-dy)
+        if w>0 then
+            g.hline(mx,my+dy,1,T.t1)
+            if w>2 then g.hline(mx+1,my+dy,w-2,T.wh) end
+            if w>1 then g.pixel(mx+w-1,my+dy,T.t1) end
+        end
+    end
+end
+
+-- Draw all
+local function dAll()
+    g.clear(T.bg); dTop(); dSide()
+    if view=="chat" then dChat()
+    elseif view=="term" then dTerm()
+    elseif view=="mon" then dMon()
+    elseif view=="files" then dFiles() end
+    dRight()
+end
+
+-- Event loop
+dAll(); dCur(lmx,lmy); g.swap()
+local run=true; local fr=0
+
+while run do
+    local dirty=false
+    while true do
+        local ev=g.poll_event()
+        if not ev then break end
+        if ev.type==g.KEY_DOWN then
+            if ev.key==27 then run=false break end
+            if view=="chat" then
+                if ev.key==8 then
+                    if #inp>0 then inp=inp:sub(1,-2) end
+                elseif ev.key==10 or ev.key==13 then
+                    if #inp>0 then
+                        msgs[#msgs+1]={f="u",t=inp}; inp=""; wait=true; cscr=99999
+                    end
+                elseif ev.key>=32 and ev.key<127 then
+                    inp=inp..string.char(ev.key)
+                end
+                dirty=true
+            elseif view=="term" then
+                if ev.key==8 then
+                    if #ti>0 then ti=ti:sub(1,-2) end
+                elseif ev.key==10 or ev.key==13 then
+                    if #ti>0 then
+                        tl[#tl+1]="claos> "..ti
+                        local cmd=ti; ti=""
+                        if cmd=="help" then tl[#tl+1]="Commands: help sysinfo uptime ls clear"
+                        elseif cmd=="clear" then tl={""}
+                        elseif cmd=="sysinfo" then
+                            tl[#tl+1]="Mem: "..claos.mem_total().."MB, "..claos.mem_free().." pages free"
+                            tl[#tl+1]="Up: "..claos.uptime().."s"
+                        elseif cmd=="uptime" then tl[#tl+1]=claos.uptime().."s"
+                        elseif cmd=="ls" then
+                            local fs=claos.ls("/")
+                            if fs then for _,f in ipairs(fs) do
+                                tl[#tl+1]=(f.is_dir and "d " or "  ")..f.name
+                            end end
+                        else
+                            tl[#tl+1]="Asking Claude..."; dirty=true
+                            dAll(); dCur(lmx,lmy); g.swap()
+                            local r=claos.ask(cmd)
+                            local wl=wrap(r or "(no response)",math.floor((W-SW-RP-20)/FW))
+                            for _,l in ipairs(wl) do tl[#tl+1]=l end
+                        end
+                        tl[#tl+1]=""
+                    end
+                elseif ev.key>=32 and ev.key<127 then
+                    ti=ti..string.char(ev.key)
+                end
+                dirty=true
+            end
+        elseif ev.type==g.MOUSE_MOVE then
+            lmx,lmy=ev.x,ev.y; dirty=true
+        elseif ev.type==g.MOUSE_DOWN then
+            -- Sidebar clicks
+            for i,s in ipairs(sideI) do
+                if hit(9,TH+12+(i-1)*42,38,38,lmx,lmy) then
+                    view=s[2]; dirty=true
+                end
+            end
+            -- Theme toggle
+            if hit(9,H-50,38,38,lmx,lmy) then
+                dk=not dk; T=mkT(dk); dirty=true
+            end
+            -- Chat send button
+            if view=="chat" then
+                local cx=SW; local cw=W-SW-RP
+                if hit(cx+cw-42,H-TH+TH-42,32,32,lmx,lmy) then
+                    if #inp>0 then
+                        msgs[#msgs+1]={f="u",t=inp}; inp=""; wait=true; cscr=99999
+                    end
+                end
+            end
+            dirty=true
         end
     end
 
-    -- Periodic refresh for uptime
-    frame = frame + 1
-    if frame % 90 == 0 then dirty = true end
-
-    if dirty then
-        draw_all()
-        draw_cursor(last_mx, last_my)
-        g.swap()
+    -- Claude response
+    if wait then
+        local last=msgs[#msgs]
+        if last.f=="u" then
+            local r=claos.ask(last.t)
+            msgs[#msgs+1]={f="c",t=r or "(no response)"}
+            wait=false; cscr=99999; dirty=true
+        end
     end
 
-    if not running then break end
+    fr=fr+1
+    if fr%90==0 then dirty=true end
+    if dirty then dAll(); dCur(lmx,lmy); g.swap() end
+    if not run then break end
     claos.sleep(16)
 end
