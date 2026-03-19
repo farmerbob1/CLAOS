@@ -31,6 +31,7 @@ static uint8_t bitmap[MAX_PAGES / 8];
 static uint32_t total_memory = 0;       /* Total detected RAM in bytes */
 static uint32_t total_pages = 0;        /* Total manageable pages */
 static uint32_t used_pages = 0;         /* Currently allocated pages */
+static uint32_t last_alloc_hint = 0;    /* Next-fit: start scanning from here */
 
 /* Set a page as used in the bitmap */
 static void pmm_set_page(uint32_t page) {
@@ -111,18 +112,26 @@ void pmm_init(uint32_t kernel_end) {
 }
 
 uint32_t pmm_alloc_page(void) {
-    /* Linear scan for the first free page */
-    for (uint32_t i = 0; i < MAX_PAGES / 8; i++) {
-        if (bitmap[i] == 0xFF)
-            continue;   /* All 8 pages in this byte are used */
+    /* Next-fit scan: start from where the last allocation was found.
+     * Wraps around once if needed. Avoids O(n) rescan from page 0. */
+    uint32_t start_byte = last_alloc_hint / 8;
+    uint32_t max_byte = MAX_PAGES / 8;
 
-        /* Found a byte with at least one free bit */
-        for (int bit = 0; bit < 8; bit++) {
-            if (!(bitmap[i] & (1 << bit))) {
-                uint32_t page = i * 8 + bit;
-                pmm_set_page(page);
-                used_pages++;
-                return page * PAGE_SIZE;
+    for (uint32_t pass = 0; pass < 2; pass++) {
+        uint32_t begin = (pass == 0) ? start_byte : 0;
+        uint32_t end   = (pass == 0) ? max_byte : start_byte;
+
+        for (uint32_t i = begin; i < end; i++) {
+            if (bitmap[i] == 0xFF) continue;
+
+            for (int bit = 0; bit < 8; bit++) {
+                if (!(bitmap[i] & (1 << bit))) {
+                    uint32_t page = i * 8 + bit;
+                    pmm_set_page(page);
+                    used_pages++;
+                    last_alloc_hint = page + 1;
+                    return page * PAGE_SIZE;
+                }
             }
         }
     }

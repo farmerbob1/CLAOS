@@ -9,6 +9,38 @@ return {
     on_open = function(s)
         s.lines = {"CLAOS Terminal v0.8", "Type commands. help for list.", ""}
         s.sv = WIDGETS.ScrollView.new({})
+        s.wrap_width = 60  -- chars per line, updated in on_draw
+
+        -- Word-wrap a string into s.lines
+        s.add_text = function(text)
+            local cpl = s.wrap_width
+            for line in (text.."\n"):gmatch("([^\n]*)\n") do
+                if #line <= cpl then
+                    s.lines[#s.lines+1] = line
+                else
+                    -- Wrap long lines
+                    local pos = 1
+                    while pos <= #line do
+                        -- Try to break at a space
+                        local chunk = line:sub(pos, pos + cpl - 1)
+                        if #chunk < cpl or pos + cpl > #line then
+                            s.lines[#s.lines+1] = chunk
+                            pos = pos + #chunk
+                        else
+                            local sp = chunk:reverse():find(" ")
+                            if sp and sp < cpl - 10 then
+                                local brk = cpl - sp
+                                s.lines[#s.lines+1] = line:sub(pos, pos + brk - 1)
+                                pos = pos + brk + 1
+                            else
+                                s.lines[#s.lines+1] = chunk
+                                pos = pos + cpl
+                            end
+                        end
+                    end
+                end
+            end
+        end
 
         -- Helper: run a Lua script file, capturing print output
         s.run_script = function(path)
@@ -33,10 +65,7 @@ return {
                 for i = 1, select("#", ...) do
                     parts[#parts+1] = tostring(select(i, ...))
                 end
-                local text = table.concat(parts, "\t")
-                for line in (text.."\n"):gmatch("([^\n]*)\n") do
-                    s.lines[#s.lines+1] = line
-                end
+                s.add_text(table.concat(parts, "\t"))
             end
             local ok, rerr = pcall(fn)
             print = old_print
@@ -56,9 +85,23 @@ return {
                 local cmd = text
 
                 if cmd == "help" then
-                    s.lines[#s.lines+1] = "Commands: help sysinfo uptime ls clear run"
+                    s.lines[#s.lines+1] = "Commands: help sysinfo uptime ls ping clear run"
                 elseif cmd == "clear" then
                     s.lines = {""}
+                elseif cmd:sub(1,5) == "ping " then
+                    local host = cmd:sub(6)
+                    if #host == 0 then
+                        s.lines[#s.lines+1] = "Usage: ping <hostname>"
+                    else
+                        s.lines[#s.lines+1] = "Pinging " .. host .. "..."
+                        s.lines[#s.lines+1] = "Asking Claude for network check..."
+                        local ok, r = pcall(claos.ask, "Reply with only: 'Pong from Claude! Host: " .. host .. " - Network OK' Nothing else.")
+                        if ok and r then
+                            s.add_text(r)
+                        else
+                            s.lines[#s.lines+1] = "Network error: could not reach Claude API"
+                        end
+                    end
                 elseif cmd == "sysinfo" then
                     local mt = claos.mem_total(); local mf = claos.mem_free()
                     s.lines[#s.lines+1] = string.format("Mem: %dMB total, %dMB free",
@@ -79,9 +122,7 @@ return {
                     s.lines[#s.lines+1] = "Asking Claude..."
                     local ok, r = pcall(claos.ask, cmd)
                     if ok and r then
-                        for line in (r.."\n"):gmatch("([^\n]*)\n") do
-                            s.lines[#s.lines+1] = line
-                        end
+                        s.add_text(r)
                     else
                         s.lines[#s.lines+1] = ok and "(no response)" or ("Error: "..tostring(r))
                     end
@@ -103,6 +144,7 @@ return {
         local fg = g.rgb(80,220,80)
         g.rect(x, y, w, h, tbg)
         s._w = w; s._h = h
+        s.wrap_width = math.floor((w - 16) / FW)
 
         -- Output area
         local out_h = h - 30
