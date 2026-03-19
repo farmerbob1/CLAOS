@@ -20,6 +20,9 @@
  * Not stored in the binary (BSS is zero-filled at load). */
 static uint32_t back_buffer[1024 * 768] __attribute__((aligned(4096)));
 
+/* Scratch buffer for 24bpp row conversion (max 1024 pixels × 3 bytes = 3072) */
+static uint8_t row_buf_24[1024 * 3];
+
 /* Framebuffer state — in .data section so fb.active is guaranteed false
  * before BSS zeroing completes (BSS may contain garbage at early boot). */
 static fb_info_t fb __attribute__((section(".data"))) = { 0 };
@@ -93,16 +96,20 @@ void fb_swap(void) {
             src += fb.width;
         }
     } else if (fb.bpp == 24) {
-        /* 24bpp: convert each 32-bit ARGB pixel to 3-byte BGR */
+        /* 24bpp: convert ARGB→BGR into cached scratch buffer per row,
+         * then bulk-copy to the uncached framebuffer. This is much faster
+         * than writing 3 bytes at a time to MMIO memory. */
         for (int y = 0; y < fb.height; y++) {
-            uint8_t* row_dst = dst;
+            uint8_t* rp = row_buf_24;
             for (int x = 0; x < fb.width; x++) {
                 uint32_t pixel = src[x];
-                row_dst[0] = (uint8_t)(pixel);        /* B */
-                row_dst[1] = (uint8_t)(pixel >> 8);    /* G */
-                row_dst[2] = (uint8_t)(pixel >> 16);   /* R */
-                row_dst += 3;
+                rp[0] = (uint8_t)(pixel);
+                rp[1] = (uint8_t)(pixel >> 8);
+                rp[2] = (uint8_t)(pixel >> 16);
+                rp += 3;
             }
+            /* Bulk copy the converted row to framebuffer */
+            memcpy(dst, row_buf_24, fb.width * 3);
             dst += fb.pitch;
             src += fb.width;
         }

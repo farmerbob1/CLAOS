@@ -243,6 +243,7 @@ void kernel_main(void) {
     if (fb_init()) {
         console_init();
         vga_set_framebuffer_mode(true);
+        console_set_batch(true);  /* Suppress flushing during boot messages */
         print_banner();
         boot_msg("VESA framebuffer", "OK");
         boot_msg("Global Descriptor Table", "OK");
@@ -352,6 +353,11 @@ void kernel_main(void) {
     boot_msg("Background tasks", "OK");
 
     vga_print("\n");
+
+    /* End batch mode — flush all boot messages to screen at once */
+    if (fb_is_active()) {
+        console_set_batch(false);
+    }
 
     /* Hand off to the ClaudeShell — this never returns */
     shell_run();

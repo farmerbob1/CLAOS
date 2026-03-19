@@ -34,6 +34,9 @@ void console_set_color(uint32_t fg, uint32_t bg);
 /* Render dirty lines to back buffer and swap to screen */
 void console_flush(void);
 
+/* Suppress/allow flushing (for batch boot output) */
+void console_set_batch(bool batch);
+
 /* Get current console dimensions */
 int console_get_cols(void);
 int console_get_rows(void);

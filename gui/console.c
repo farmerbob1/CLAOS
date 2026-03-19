@@ -32,6 +32,7 @@ static uint32_t cur_fg = FB_WHITE;
 static uint32_t cur_bg = FB_BLACK;
 static int num_cols = 80;      /* Actual columns (based on resolution) */
 static int num_rows = 25;      /* Actual rows (based on resolution) */
+static bool batch_mode = false; /* When true, console_flush is suppressed */
 
 void console_init(void) {
     const fb_info_t* info = fb_get_info();
@@ -143,8 +144,15 @@ void console_print(const char* str) {
     }
 }
 
+void console_set_batch(bool batch) {
+    batch_mode = batch;
+    /* When leaving batch mode, do a final flush */
+    if (!batch) console_flush();
+}
+
 void console_flush(void) {
     if (!fb_is_active()) return;
+    if (batch_mode) return;  /* Suppress during batch mode */
 
     for (int r = 0; r < num_rows; r++) {
         if (!line_dirty[r]) continue;
