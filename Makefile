@@ -54,6 +54,7 @@ C_SOURCES = kernel/main.c \
             drivers/pci.c \
             drivers/e1000.c \
             drivers/ata.c \
+            drivers/mouse.c \
             fs/chaosfs.c \
             net/ethernet.c \
             net/arp.c \
@@ -72,6 +73,7 @@ C_SOURCES = kernel/main.c \
             gui/fb.c \
             gui/font.c \
             gui/console.c \
+            gui/input.c \
             lib/bearssl/bearssl_shim.c \
             lib/lua/lua_shim.c
 

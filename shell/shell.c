@@ -27,6 +27,7 @@
 #include "net.h"
 #include "chaosfs.h"
 #include "claos_lib.h"
+#include "fb.h"
 
 /* Shell input buffer */
 #define SHELL_BUF_SIZE 1024
@@ -590,6 +591,46 @@ void shell_run(void) {
             claude_interactive_setup();
         } else if (strncmp(line, "claude ", 7) == 0) {
             cmd_claude(line + 7);
+        } else if (strcmp(line, "gui") == 0) {
+            /* Launch GUI — activate VESA and run /system/gui/init.lua */
+            if (*(volatile uint8_t*)0x9000 != 1) {
+                vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                vga_print("  No VBE graphics available.\n");
+            } else {
+                vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+                vga_print("  Launching GUI...\n");
+                /* Try to run the GUI init script */
+                lua_run_string("if claos.gui.activate() then\n"
+                    "  local ok, err = pcall(function()\n"
+                    "    local f = claos.read('/system/gui/init.lua')\n"
+                    "    if f then load(f)()\n"
+                    "    else\n"
+                    "      -- No init.lua yet, run a simple test\n"
+                    "      local g = claos.gui\n"
+                    "      g.clear(g.rgb(30, 30, 40))\n"
+                    "      g.rect(100, 100, 300, 200, g.rgb(60, 60, 80))\n"
+                    "      g.text(120, 130, 'CLAOS GUI Active', g.WHITE, g.rgb(60,60,80))\n"
+                    "      g.text(120, 160, 'Mouse and keyboard events ready', g.GREY, g.rgb(60,60,80))\n"
+                    "      g.text(120, 190, 'Press ESC to return to text mode', g.GREY, g.rgb(60,60,80))\n"
+                    "      g.swap()\n"
+                    "      -- Simple event loop\n"
+                    "      while true do\n"
+                    "        local ev = g.poll_event()\n"
+                    "        if ev then\n"
+                    "          if ev.type == g.KEY_DOWN and ev.key == 27 then break end\n"
+                    "          if ev.type == g.MOUSE_MOVE then\n"
+                    "            g.rect(0, 0, g.width(), 16, g.rgb(30,30,40))\n"
+                    "            g.text(4, 0, 'Mouse: '..ev.x..','..ev.y, g.WHITE, g.rgb(30,30,40))\n"
+                    "            g.swap()\n"
+                    "          end\n"
+                    "        end\n"
+                    "        claos.sleep(10)\n"
+                    "      end\n"
+                    "    end\n"
+                    "  end)\n"
+                    "  if not ok then print('GUI error: '..tostring(err)) end\n"
+                    "end");
+            }
         } else if (strcmp(line, "panic") == 0) {
             extern void kernel_panic(const char* message);
             kernel_panic("User-initiated panic. This is fine. Everything is fine.");

@@ -37,10 +37,20 @@
 #include "chaosfs.h"
 #include "claos_lib.h"
 #include "shell.h"
+#include "mouse.h"
+#include "input.h"
+#include "fb.h"
 
 /* IRQ handler functions defined in driver files */
 extern void timer_handler(void);
 extern void keyboard_handler(void);
+extern void mouse_handler(void);
+
+/* Mouse IRQ wrapper */
+static void mouse_irq_handler(struct registers* regs) {
+    (void)regs;
+    mouse_handler();
+}
 
 /* Kernel end address from linker script — marks where free memory begins */
 extern uint32_t _kernel_end;
@@ -207,6 +217,14 @@ void kernel_main(void) {
     boot_msg("PS/2 Keyboard", "OK");
     serial_print("[CLAOS] Keyboard OK\n");
 
+    /* Step 6b: Initialize PS/2 mouse */
+    mouse_init();
+    register_interrupt_handler(44, mouse_irq_handler);  /* IRQ12 = interrupt 44 */
+    boot_msg("PS/2 Mouse", "OK");
+
+    /* Step 6c: Input event queue (for GUI mode) */
+    input_init();
+
     /* Step 7: Physical memory manager */
     pmm_init((uint32_t)&_kernel_end);
     boot_msg("Physical memory", "OK");
@@ -227,8 +245,8 @@ void kernel_main(void) {
     boot_msg("Virtual memory (paging)", "OK");
     serial_print("[CLAOS] VMM OK\n");
 
-    /* Step 8b: Check if VBE was probed by stage2 (mode NOT set yet) */
-    if (*(volatile uint8_t*)0x9000 == 1) {
+    /* Step 8b: Probe VBE info from stage2 (mode NOT active yet) */
+    if (fb_init()) {
         boot_msg("VBE graphics", "AVAILABLE (on demand)");
         serial_print("[CLAOS] VBE mode available for GUI launch\n");
     } else {

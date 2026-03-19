@@ -12,6 +12,7 @@
 #include "keyboard.h"
 #include "vga.h"
 #include "io.h"
+#include "input.h"
 
 /* US QWERTY scancode-to-ASCII lookup table (Set 1, lowercase)
  * Index = scancode, value = ASCII character (0 = not a printable key) */
@@ -78,12 +79,19 @@ void keyboard_handler(void) {
     else
         c = scancode_ascii[scancode];
 
-    /* If it's a valid character, add to buffer */
+    /* If it's a valid character, route it */
     if (c != 0) {
-        int next_head = (kb_head + 1) % KB_BUFFER_SIZE;
-        if (next_head != kb_tail) {     /* Don't overflow the buffer */
-            kb_buffer[kb_head] = c;
-            kb_head = next_head;
+        if (input_is_gui_mode()) {
+            /* GUI mode: push to event queue for Lua */
+            input_event_t ev = { EVENT_KEY_DOWN, (uint16_t)c, 0, 0, 0 };
+            input_push(&ev);
+        } else {
+            /* Text mode: add to keyboard line buffer */
+            int next_head = (kb_head + 1) % KB_BUFFER_SIZE;
+            if (next_head != kb_tail) {
+                kb_buffer[kb_head] = c;
+                kb_head = next_head;
+            }
         }
     }
 }

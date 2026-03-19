@@ -27,6 +27,9 @@
 #include "io.h"
 #include "fb.h"
 #include "font.h"
+#include "input.h"
+#include "mouse.h"
+#include "console.h"
 
 /* Global Lua state */
 static lua_State* global_L = NULL;
@@ -189,12 +192,45 @@ static int l_gui_text(lua_State* L) { int w = fb_text((int)luaL_checkinteger(L,1
 static int l_gui_swap(lua_State* L) { (void)L; fb_swap(); return 0; }
 static int l_gui_rgb(lua_State* L) { lua_pushinteger(L,(lua_Integer)(int32_t)FB_RGB((int)luaL_checkinteger(L,1),(int)luaL_checkinteger(L,2),(int)luaL_checkinteger(L,3))); return 1; }
 
+/* Poll next input event. Returns table {type, key, x, y, button} or nil */
+static int l_gui_poll_event(lua_State* L) {
+    input_event_t ev;
+    if (!input_poll(&ev)) { lua_pushnil(L); return 1; }
+    lua_createtable(L, 0, 5);
+    lua_pushinteger(L, ev.type);     lua_setfield(L, -2, "type");
+    lua_pushinteger(L, ev.key);      lua_setfield(L, -2, "key");
+    lua_pushinteger(L, ev.mouse_x);  lua_setfield(L, -2, "x");
+    lua_pushinteger(L, ev.mouse_y);  lua_setfield(L, -2, "y");
+    lua_pushinteger(L, ev.mouse_btn); lua_setfield(L, -2, "button");
+    return 1;
+}
+
+static int l_gui_mouse_x(lua_State* L) { lua_pushinteger(L, mouse_get_x()); return 1; }
+static int l_gui_mouse_y(lua_State* L) { lua_pushinteger(L, mouse_get_y()); return 1; }
+
+/* Activate VESA mode from Lua */
+static int l_gui_activate(lua_State* L) {
+    (void)L;
+    bool ok = fb_activate();
+    if (ok) {
+        const fb_info_t* info = fb_get_info();
+        mouse_set_bounds(info->width, info->height);
+        input_set_gui_mode(true);
+        console_init();
+        vga_set_framebuffer_mode(true);
+    }
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
 static const luaL_Reg gui_funcs[] = {
     {"width",l_gui_width},{"height",l_gui_height},{"active",l_gui_active},
     {"clear",l_gui_clear},{"pixel",l_gui_pixel},{"rect",l_gui_rect},
     {"rect_outline",l_gui_rect_outline},{"line",l_gui_line},
     {"circle",l_gui_circle},{"circle_filled",l_gui_circle_filled},
-    {"text",l_gui_text},{"swap",l_gui_swap},{"rgb",l_gui_rgb},{NULL,NULL}
+    {"text",l_gui_text},{"swap",l_gui_swap},{"rgb",l_gui_rgb},
+    {"poll_event",l_gui_poll_event},{"mouse_x",l_gui_mouse_x},{"mouse_y",l_gui_mouse_y},
+    {"activate",l_gui_activate},{NULL,NULL}
 };
 
 /* Register the claos library */
@@ -217,6 +253,11 @@ void claos_lua_register(lua_State* L) {
     lua_pushinteger(L,(lua_Integer)(int32_t)FB_GREY);   lua_setfield(L,-2,"GREY");
     lua_pushinteger(L,FONT_WIDTH);  lua_setfield(L,-2,"FONT_W");
     lua_pushinteger(L,FONT_HEIGHT); lua_setfield(L,-2,"FONT_H");
+    /* Event type constants */
+    lua_pushinteger(L, EVENT_KEY_DOWN);   lua_setfield(L,-2,"KEY_DOWN");
+    lua_pushinteger(L, EVENT_MOUSE_MOVE); lua_setfield(L,-2,"MOUSE_MOVE");
+    lua_pushinteger(L, EVENT_MOUSE_DOWN); lua_setfield(L,-2,"MOUSE_DOWN");
+    lua_pushinteger(L, EVENT_MOUSE_UP);   lua_setfield(L,-2,"MOUSE_UP");
     lua_setfield(L, -2, "gui");
 
     lua_setglobal(L, "claos");
