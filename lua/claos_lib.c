@@ -37,15 +37,12 @@
 /* Global Lua state */
 static lua_State* global_L = NULL;
 
-/* ─── claos.ask(prompt) → response ─── */
+/* ─── claos.ask(prompt) → response (agent mode with tools) ─── */
 static int l_ask(lua_State* L) {
     const char* prompt = luaL_checkstring(L, 1);
 
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  [CLAOS -> Claude] Sending...\n");
-
     static char response[CLAUDE_RESPONSE_MAX];
-    int len = claude_ask(prompt, response, sizeof(response));
+    int len = claude_ask_with_tools(prompt, response, sizeof(response));
 
     if (len > 0) {
         lua_pushlstring(L, response, len);

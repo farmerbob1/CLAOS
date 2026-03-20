@@ -279,10 +279,10 @@ static void cmd_tls(void) {
 
 static void cmd_claude(const char* prompt) {
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    vga_print("  [CLAOS -> Claude] Sending...\n");
+    vga_print("  [CLAOS -> Claude] Sending (agent mode)...\n");
 
     static char response[CLAUDE_RESPONSE_MAX];
-    int len = claude_ask(prompt, response, sizeof(response));
+    int len = claude_ask_with_tools(prompt, response, sizeof(response));
 
     if (len > 0) {
         vga_set_color(VGA_LIGHT_MAGENTA, VGA_BLACK);
@@ -528,7 +528,7 @@ static void cmd_reboot(void) {
 
 void shell_run(void) {
     vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_print("  CLAOS v0.8 ready.\n");
+    vga_print("  CLAOS v0.9 ready. (Claude Agent Mode enabled)\n");
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print("  Type 'help' for commands, or just talk to Claude.\n\n");
 

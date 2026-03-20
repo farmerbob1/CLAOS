@@ -94,7 +94,8 @@ return {
                         s.lines[#s.lines+1] = "Usage: ping <hostname>"
                     else
                         s.lines[#s.lines+1] = "Pinging " .. host .. "..."
-                        s.lines[#s.lines+1] = "Asking Claude for network check..."
+                        s.lines[#s.lines+1] = "Asking Claude..."
+                        s.sv:scroll_to_bottom()
                         local ok, r = pcall(claos.ask, "Reply with only: 'Pong from Claude! Host: " .. host .. " - Network OK' Nothing else.")
                         if ok and r then
                             s.add_text(r)
@@ -119,7 +120,8 @@ return {
                     local path = cmd:sub(5)
                     s.run_script(path)
                 else
-                    s.lines[#s.lines+1] = "Asking Claude..."
+                    s.lines[#s.lines+1] = "Asking Claude (agent mode)..."
+                    s.sv:scroll_to_bottom()
                     local ok, r = pcall(claos.ask, cmd)
                     if ok and r then
                         s.add_text(r)

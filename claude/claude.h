@@ -3,8 +3,7 @@
  * claude.h — Claude API Protocol Layer
  *
  * High-level API for talking to Claude from the kernel.
- * Handles JSON formatting, HTTPS requests, and response parsing.
- * API key and model are configured at runtime, not compile time.
+ * Supports both simple text requests and multi-turn tool interactions.
  */
 
 #ifndef CLAOS_CLAUDE_H
@@ -30,9 +29,17 @@ const char* claude_get_api_key_masked(void);
 /* Get the current model name */
 const char* claude_get_model(void);
 
-/* Send a prompt to Claude and get a response.
+/* Simple prompt → response (no tools, no system prompt).
+ * Used by panic handler and backward-compatible code.
  * Returns the length of the response, or -1 on error. */
 int claude_ask(const char* prompt, char* response_buf, int buf_size);
+
+/* Full tool-enabled prompt → response.
+ * Sends with system prompt, sysinfo, tool definitions.
+ * Executes up to 10 rounds of tool calls before returning
+ * Claude's final text response.
+ * Returns the length of the response, or -1 on error. */
+int claude_ask_with_tools(const char* user_message, char* response_buf, int buf_size);
 
 /* Check if Claude is configured (API key is set) */
 bool claude_is_configured(void);

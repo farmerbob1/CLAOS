@@ -70,6 +70,8 @@ C_SOURCES = kernel/main.c \
             claude/claude.c \
             claude/json.c \
             claude/panic_handler.c \
+            claude/claude_tools.c \
+            claude/claude_system.c \
             shell/shell.c \
             lua/claos_lib.c \
             gui/fb.c \
@@ -132,9 +134,9 @@ boot/stage1.bin: boot/stage1.asm
 boot/stage2.bin: boot/stage2.asm
 	$(AS) $(ASFLAGS_BIN) $< -o $@
 
-# Compile CLAOS C source files
+# Compile all CLAOS C files with -Os to fit bootloader's 608KB limit
 $(C_OBJECTS): %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -Os -c $< -o $@
 
 # Compile BearSSL source files (with relaxed warnings)
 $(BEARSSL_OBJECTS): %.o: %.c
